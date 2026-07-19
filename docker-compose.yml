@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: savings_db
+    environment:
+      POSTGRES_USER: savings_user
+      POSTGRES_PASSWORD: savings_dev_password
+      POSTGRES_DB: savings_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U savings_user -d savings_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      target: development
+    container_name: savings_api
+    volumes:
+      - ./src:/app/src
+      - ./alembic.ini:/app/alembic.ini
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://savings_user:savings_dev_password@db:5432/savings_dev
+      - DATABASE_SSL=False
+      - ENVIRONMENT=development
+      - JWT_SECRET=dev_jwt_secret_must_be_changed_in_production_1234567890
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m src.db.seed &&
+             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:

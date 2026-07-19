@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+sqlalchemy[asyncio]
+asyncpg
+fastapi-users[sqlalchemy]
+alembic
+cryptography
