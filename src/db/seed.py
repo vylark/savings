@@ -1,7 +1,9 @@
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import AsyncSessionLocal
+
 from sqlalchemy import text
+
+from src.db.session import AsyncSessionLocal
+
 
 async def seed_development_data():
     """Populates local development database with baseline seeds if they don't exist."""
@@ -15,9 +17,9 @@ async def seed_development_data():
                 text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'user');")
             )
             table_exists = result.scalar()
-            
+
             if table_exists:
-                user_count_result = await session.execute(text("SELECT COUNT(*) FROM \"user\";"))
+                user_count_result = await session.execute(text('SELECT COUNT(*) FROM "user";'))
                 user_count = user_count_result.scalar()
                 if user_count == 0:
                     print("Seeding initial administrator user...")
@@ -34,6 +36,7 @@ async def seed_development_data():
         except Exception as e:
             print(f"Error during seeding: {e}")
             await session.rollback()
+
 
 if __name__ == "__main__":
     try:

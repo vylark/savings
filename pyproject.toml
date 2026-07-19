@@ -1,0 +1,25 @@
+[tool.ruff]
+# Target python version
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), pycodestyle (E, W), and isort (I) rules
+select = ["F", "E", "W", "I"]
+ignore = [
+    "E501", # Defer line length checks to the formatter
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
