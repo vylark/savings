@@ -26,11 +26,13 @@ services:
       - ./alembic.ini:/app/alembic.ini
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://savings_user:savings_dev_password@db:5432/savings_dev
-      - DATABASE_SSL=False
-      - ENVIRONMENT=development
-      - JWT_SECRET=dev_jwt_secret_must_be_changed_in_production_1234567890
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-savings_user}:${POSTGRES_PASSWORD:-savings_dev_password}@db:5432/${POSTGRES_DB:-savings_dev}
+      - DATABASE_SSL=${DATABASE_SSL:-False}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       db:
         condition: service_healthy

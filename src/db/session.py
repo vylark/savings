@@ -4,12 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from src.core.config import settings
 
-# Neon serverless PostgreSQL requires SSL. We apply SSL configurations conditionally.
+# SSL configurations for secure database connection
 connect_args = {}
 if settings.DATABASE_SSL:
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE  # In production, swap with server CA files if strict verification is preferred
+    if settings.DATABASE_CA_FILE:
+        ctx.load_verify_locations(cafile=settings.DATABASE_CA_FILE)
     connect_args["ssl"] = ctx
 
 engine = create_async_engine(

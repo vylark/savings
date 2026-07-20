@@ -27,8 +27,7 @@ async def seed_development_data():
                     # In real implementation:
                     # hashed_pwd = pwd_context.hash("adminpassword")
                     # session.add(User(email="admin@savings.local", hashed_password=hashed_pwd, ...))
-                    await session.commit()
-                    print("Local database successfully seeded.")
+                    print("Seeding placeholder (no data written yet).")
                 else:
                     print("Database already contains user records. Skipping seed.")
             else:
@@ -39,12 +38,4 @@ async def seed_development_data():
 
 
 if __name__ == "__main__":
-    try:
-        running_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        running_loop = None
-
-    if running_loop and running_loop.is_running():
-        running_loop.create_task(seed_development_data())
-    else:
-        asyncio.run(seed_development_data())
+    asyncio.run(seed_development_data())
