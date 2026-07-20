@@ -12,10 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir uv
 
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.txt ./
 
 # Stage 1a: Development builder (builds dev venv at /opt/venv)
 FROM builder AS dev-builder
+COPY requirements-dev.txt ./
 RUN uv venv /opt/venv
 RUN uv pip install --python /opt/venv/bin/python -r requirements.txt -r requirements-dev.txt
 

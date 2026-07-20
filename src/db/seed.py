@@ -35,8 +35,8 @@ async def seed_development_data():
                     logger.info("Database already contains user records. Skipping seed.")
             else:
                 logger.info("User table does not exist yet. Run migrations first.")
-        except Exception as e:
-            logger.error("Error during seeding: %s", e)
+        except Exception:
+            logger.exception("Error during seeding")
             await session.rollback()
             raise
 
