@@ -7,6 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-savings_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-savings_dev}
     ports:
+      # Mapped host port to 5433 to avoid collision with native PostgreSQL instances on Windows
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data

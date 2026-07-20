@@ -1,8 +1,6 @@
-import pytest
 from httpx import AsyncClient
 
 
-@pytest.mark.asyncio
 async def test_health_check_endpoint(client: AsyncClient) -> None:
     """Verify that the /health endpoint responds correctly."""
     response = await client.get("/health")

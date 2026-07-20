@@ -35,6 +35,8 @@ async def create_test_db_if_not_exists() -> None:
         "port": parsed.port or 5432,
         "database": "postgres",
     }
+    # asyncpg defaults to GSSAPI authentication on Windows, which conflicts with native Postgres.
+    # Force SSPI to avoid authentication errors on Win32 hosts.
     if sys.platform == "win32":
         connect_kwargs["gsslib"] = "sspi"
     conn = await asyncpg.connect(**connect_kwargs)
@@ -80,7 +82,7 @@ async def setup_test_database() -> AsyncGenerator[None, None]:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
+async def test_engine(setup_test_database: None) -> AsyncGenerator[AsyncEngine, None]:
     """Yield a session-scoped async engine for testing."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
@@ -122,7 +124,7 @@ async def override_app_dependencies(db_session: AsyncSession) -> AsyncGenerator[
 
     app.dependency_overrides[get_db_session] = _get_test_db
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_db_session, None)
 
 
 @pytest_asyncio.fixture
