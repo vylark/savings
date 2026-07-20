@@ -4,12 +4,11 @@ from urllib.parse import urlparse
 
 import asyncpg
 import httpx
-import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from src.core.config import settings
@@ -29,15 +28,16 @@ async def create_test_db_if_not_exists() -> None:
     host = parsed.hostname or "127.0.0.1"
     if host == "localhost":
         host = "127.0.0.1"
-    gsslib = "sspi" if sys.platform == "win32" else "gssapi"
-    conn = await asyncpg.connect(
-        user=parsed.username,
-        password=parsed.password,
-        host=host,
-        port=parsed.port or 5432,
-        database="postgres",
-        gsslib=gsslib,
-    )
+    connect_kwargs: dict = {
+        "user": parsed.username,
+        "password": parsed.password,
+        "host": host,
+        "port": parsed.port or 5432,
+        "database": "postgres",
+    }
+    if sys.platform == "win32":
+        connect_kwargs["gsslib"] = "sspi"
+    conn = await asyncpg.connect(**connect_kwargs)
     try:
         exists = await conn.fetchval(
             "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1);",
@@ -52,7 +52,7 @@ async def create_test_db_if_not_exists() -> None:
         await conn.close()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_test_database() -> AsyncGenerator[None, None]:
     """Create the test database, run migrations once, and clean up at session end."""
     await create_test_db_if_not_exists()
@@ -79,18 +79,25 @@ async def setup_test_database() -> AsyncGenerator[None, None]:
     get_sessionmaker.cache_clear()
 
 
-@pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield a transaction-wrapped test database session.
-
-    Rolls back all inserts/updates on completion to guarantee clean state.
-    """
+@pytest_asyncio.fixture(scope="session")
+async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
+    """Yield a session-scoped async engine for testing."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
         poolclass=NullPool,
     )
-    async with engine.connect() as connection:
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+    """Yield a transaction-wrapped test database session.
+
+    Rolls back all inserts/updates on completion to guarantee clean state.
+    """
+    async with test_engine.connect() as connection:
         transaction = await connection.begin()
         session_factory = async_sessionmaker(
             bind=connection,
@@ -104,10 +111,9 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
         await transaction.rollback()
-    await engine.dispose()
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def override_app_dependencies(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Override FastAPI's get_db_session dependency to yield the transaction-wrapped session."""
 
@@ -120,7 +126,7 @@ async def override_app_dependencies(db_session: AsyncSession) -> AsyncGenerator[
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(override_app_dependencies: None) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Yield an HTTPX asynchronous client linked to the FastAPI application."""
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
