@@ -1,36 +1,50 @@
 import ssl
 from collections.abc import AsyncGenerator
+from functools import lru_cache
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
 
-# SSL configurations for secure database connection
-connect_args = {}
-if settings.DATABASE_SSL:
-    ctx = ssl.create_default_context()
-    if settings.DATABASE_CA_FILE:
-        ctx.load_verify_locations(cafile=settings.DATABASE_CA_FILE)
-    connect_args["ssl"] = ctx
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=settings.ENVIRONMENT == "development",
-)
+@lru_cache
+def get_engine() -> AsyncEngine:
+    """Create and cache AsyncEngine instance based on application settings."""
+    connect_args = {}
+    if settings.DATABASE_SSL:
+        ctx = ssl.create_default_context()
+        if settings.DATABASE_CA_FILE:
+            ctx.load_verify_locations(cafile=settings.DATABASE_CA_FILE)
+        connect_args["ssl"] = ctx
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+    return create_async_engine(
+        settings.DATABASE_URL,
+        connect_args=connect_args,
+        echo=settings.ENVIRONMENT == "development",
+    )
+
+
+@lru_cache
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """Create and cache async_sessionmaker instance."""
+    return async_sessionmaker(
+        bind=get_engine(),
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+
+def AsyncSessionLocal() -> AsyncSession:
+    """Helper function to instantiate a new AsyncSession."""
+    return get_sessionmaker()()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency to yield database session to FastAPI routers."""
-    async with AsyncSessionLocal() as session:
+    session_factory = get_sessionmaker()
+    async with session_factory() as session:
         try:
             yield session
             await session.commit()

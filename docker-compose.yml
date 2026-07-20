@@ -2,8 +2,6 @@ services:
   db:
     image: postgres:17-alpine
     container_name: savings_db
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-savings_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-savings_dev_password}
@@ -16,7 +14,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-savings_user} -d $${POSTGRES_DB:-savings_dev}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
   web:
     build:
