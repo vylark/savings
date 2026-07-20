@@ -8,6 +8,6 @@ app = FastAPI(
 
 
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint to verify container and server operation."""
     return {"status": "healthy"}

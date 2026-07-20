@@ -22,6 +22,9 @@ services:
       context: .
       target: development
     container_name: savings_api
+    # TODO(epic1): restart: on-failure:3 retries the full alembic+seed+uvicorn chain on failure.
+    # Once real migrations land, evaluate whether a partial migration followed by a retry is safe
+    # (Alembic is idempotent for already-applied revisions, so this should be fine in practice).
     restart: "on-failure:3"
     volumes:
       - ./src:/app/src
@@ -46,9 +49,8 @@ services:
       start_period: 15s
     command: >
       sh -c "alembic upgrade head &&
-             python -m src.db.seed || true &&
+             python -m src.db.seed &&
              uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
 
 volumes:
   pgdata:
-

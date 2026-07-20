@@ -4,10 +4,12 @@ target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-# Enable Pyflakes (F), pycodestyle (E, W), and isort (I) rules
-select = ["F", "E", "W", "I"]
+# Enable Pyflakes (F), pycodestyle (E, W), isort (I), bugbear (B),
+# pyupgrade (UP), and type annotation (ANN) rules
+select = ["F", "E", "W", "I", "B", "UP", "ANN"]
 ignore = [
-    "E501", # Defer line length checks to the formatter
+    "E501",    # Defer line length checks to the formatter
+    "ANN204",  # Missing return type annotation for special method (__init__)
 ]
 
 # Allow autofix for all enabled rules

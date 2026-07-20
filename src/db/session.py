@@ -1,5 +1,6 @@
 import ssl
 from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager
 from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -47,11 +48,11 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     )
 
 
-def create_session() -> AsyncSession:
+def create_session() -> AbstractAsyncContextManager[AsyncSession]:
     """Helper function to instantiate a new AsyncSession.
 
-    Note: Callers should use this as an async context manager
-    (e.g., `async with create_session() as session:`).
+    Must be used as an async context manager:
+        async with create_session() as session: ...
     """
     return get_sessionmaker()()
 
