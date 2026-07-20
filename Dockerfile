@@ -27,6 +27,7 @@ RUN uv pip install --python /opt/venv/bin/python -r requirements.txt
 
 # Stage 2: Development runtime (hot-reloading, dev dependencies)
 # NOTE: src/ is not copied here; it is bind-mounted at runtime via docker-compose.yml.
+# Development stage runs as root for volume mount permission flexibility during local development.
 FROM python:3.12-slim AS development
 
 WORKDIR /app
@@ -38,7 +39,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/app"
 
-# Development command runs uvicorn with reload
+# Development command runs uvicorn with reload.
+# Note: When run via docker-compose, compose `command` executes alembic migrations and seeding prior to starting uvicorn.
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # Stage 3: Production runtime (lightweight, secure, rootless)

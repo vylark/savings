@@ -37,7 +37,11 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 
 def create_session() -> AsyncSession:
-    """Helper function to instantiate a new AsyncSession."""
+    """Helper function to instantiate a new AsyncSession.
+
+    Note: Callers should use this as an async context manager
+    (e.g., `async with create_session() as session:`).
+    """
     return get_sessionmaker()()
 
 
