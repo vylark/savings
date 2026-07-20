@@ -23,6 +23,8 @@ TEST_DATABASE_URL = f"{base_url}/{TEST_DB_NAME}"
 
 async def create_test_db_if_not_exists() -> None:
     """Connect to default postgres DB and create the test database if it does not exist."""
+    # SQLAlchemy cannot execute CREATE DATABASE because it wraps statements
+    # in implicit transactions. asyncpg is used here for this DDL-only operation.
     connection_string = base_url.replace("postgresql+asyncpg://", "postgresql://")
     parsed = urlparse(connection_string)
     host = parsed.hostname or "127.0.0.1"
@@ -56,7 +58,10 @@ async def create_test_db_if_not_exists() -> None:
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_test_database() -> AsyncGenerator[None, None]:
-    """Create the test database, run migrations once, and clean up at session end."""
+    """Create test database and run migrations once per session.
+
+    Note: The test database schema persists across sessions for performance.
+    """
     await create_test_db_if_not_exists()
 
     print("Running migrations on test database...")
@@ -110,12 +115,11 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
         )
         async with session_factory() as session:
             yield session
-            await session.close()
 
         await transaction.rollback()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def override_app_dependencies(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Override FastAPI's get_db_session dependency to yield the transaction-wrapped session."""
 
@@ -127,7 +131,7 @@ async def override_app_dependencies(db_session: AsyncSession) -> AsyncGenerator[
     app.dependency_overrides.pop(get_db_session, None)
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def client(override_app_dependencies: None) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Yield an HTTPX asynchronous client linked to the FastAPI application."""
     transport = httpx.ASGITransport(app=app)
