@@ -1,4 +1,4 @@
-# Stage 1: Build virtual environment
+# Stage 1: Base builder
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -14,23 +14,25 @@ RUN pip install --no-cache-dir uv
 
 COPY requirements.txt requirements-dev.txt ./
 
-# Build production venv
-RUN uv venv /opt/venv-prod
-RUN uv pip install --python /opt/venv-prod/bin/python -r requirements.txt
+# Stage 1a: Development builder (builds dev venv at /opt/venv)
+FROM builder AS dev-builder
+RUN uv venv /opt/venv
+RUN uv pip install --python /opt/venv/bin/python -r requirements.txt -r requirements-dev.txt
 
-# Build development venv (includes dev dependencies)
-RUN uv venv /opt/venv-dev
-RUN uv pip install --python /opt/venv-dev/bin/python -r requirements.txt -r requirements-dev.txt
+# Stage 1b: Production builder (builds prod venv at /opt/venv)
+FROM builder AS prod-builder
+RUN uv venv /opt/venv
+RUN uv pip install --python /opt/venv/bin/python -r requirements.txt
 
 # Stage 2: Development runtime (hot-reloading, dev dependencies)
 FROM python:3.12-slim AS development
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv-dev /opt/venv
+COPY --from=dev-builder /opt/venv /opt/venv
 COPY alembic.ini /app/
 ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app:$PYTHONPATH"
+    PYTHONPATH="/app"
 
 # Development command runs uvicorn with reload
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -44,10 +46,10 @@ WORKDIR /app
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -m -s /sbin/nologin appuser
 
-# Only copy runtime dependencies (re-install prod only for final layer)
-COPY --from=builder /opt/venv-prod /opt/venv
+# Only copy runtime dependencies
+COPY --from=prod-builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app:$PYTHONPATH"
+    PYTHONPATH="/app"
 
 # Copy source code and change ownership
 COPY --chown=appuser:appgroup src/ /app/src/
