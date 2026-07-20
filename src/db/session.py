@@ -9,7 +9,12 @@ from src.core.config import settings
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    """Create and cache AsyncEngine instance based on application settings."""
+    """Create and cache AsyncEngine instance based on application settings.
+
+    Note: This function is cached for the process lifetime via @lru_cache.
+    Test suites that patch `settings` must call `get_engine.cache_clear()`
+    in teardown to avoid operating against a stale engine and connection pool.
+    """
     connect_args = {}
     if settings.DATABASE_SSL:
         ctx = ssl.create_default_context()
@@ -26,7 +31,13 @@ def get_engine() -> AsyncEngine:
 
 @lru_cache
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
-    """Create and cache async_sessionmaker instance."""
+    """Create and cache async_sessionmaker instance.
+
+    Note: This function is cached for the process lifetime via @lru_cache.
+    Test suites must call `get_engine.cache_clear()` and
+    `get_sessionmaker.cache_clear()` in teardown to avoid session factory
+    instances bound to a stale engine.
+    """
     return async_sessionmaker(
         bind=get_engine(),
         class_=AsyncSession,

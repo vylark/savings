@@ -12,7 +12,7 @@ class SeedError(Exception):
     """Custom exception raised when database seeding fails."""
 
 
-async def seed_development_data():
+async def seed_development_data() -> None:
     """Populates local development database with baseline seeds if they don't exist."""
     logger.info("Checking database for seeding...")
     async with create_session() as session:

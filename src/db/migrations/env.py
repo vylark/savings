@@ -18,7 +18,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set target metadata for autogenerate detection
+# Set target metadata for autogenerate detection.
+# WARNING: target_metadata is intentionally None until SQLAlchemy models are
+# created. While None, `alembic revision --autogenerate` will silently generate
+# empty migrations with no schema changes detected. Once models exist, replace
+# the line below with `target_metadata = Base.metadata` to enable autogenerate.
 # target_metadata = Base.metadata
 target_metadata = None
 

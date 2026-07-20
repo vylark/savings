@@ -35,6 +35,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DATABASE_URL must be explicitly set to a custom database URL in production environments."
                 )
+            if not self.DATABASE_SSL:
+                raise ValueError("DATABASE_SSL must be True in production environments.")
         return self
 
 
