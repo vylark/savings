@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     DATABASE_CA_FILE: str | None = Field(default=None)
 
     # Authentication Security
-    JWT_SECRET: str = Field(..., min_length=32)
+    JWT_SECRET: str = Field(
+        default="dev_secret_jwt_key_must_be_changed_in_production_32chars",
+        min_length=32,
+    )
 
     # Settings configuration
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

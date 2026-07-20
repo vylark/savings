@@ -1,14 +1,16 @@
 import asyncio
-import sys
+import logging
 
 from sqlalchemy import text
 
 from src.db.session import AsyncSessionLocal
 
+logger = logging.getLogger(__name__)
+
 
 async def seed_development_data():
     """Populates local development database with baseline seeds if they don't exist."""
-    print("Checking database for seeding...")
+    logger.info("Checking database for seeding...")
     async with AsyncSessionLocal() as session:
         # NOTE: Once the User model is introduced in Epic 1, replace this placeholder
         # SQL with SQLAlchemy queries that verify and create a default admin/test user.
@@ -23,21 +25,22 @@ async def seed_development_data():
                 user_count_result = await session.execute(text('SELECT COUNT(*) FROM "user";'))
                 user_count = user_count_result.scalar()
                 if user_count == 0:
-                    print("Seeding initial administrator user...")
+                    logger.info("Seeding initial administrator user...")
                     # Placeholder query representing seeding logic.
                     # In real implementation:
                     # hashed_pwd = pwd_context.hash("adminpassword")
                     # session.add(User(email="admin@savings.local", hashed_password=hashed_pwd, ...))
-                    print("Seeding placeholder (no data written yet).")
+                    logger.info("Seeding placeholder (no data written yet).")
                 else:
-                    print("Database already contains user records. Skipping seed.")
+                    logger.info("Database already contains user records. Skipping seed.")
             else:
-                print("User table does not exist yet. Run migrations first.")
+                logger.info("User table does not exist yet. Run migrations first.")
         except Exception as e:
-            print(f"Error during seeding: {e}", file=sys.stderr)
+            logger.error("Error during seeding: %s", e)
             await session.rollback()
             raise
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     asyncio.run(seed_development_data())

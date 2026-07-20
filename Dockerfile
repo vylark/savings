@@ -32,7 +32,9 @@ WORKDIR /app
 
 COPY --from=dev-builder /opt/venv /opt/venv
 COPY alembic.ini /app/
-ENV PATH="/opt/venv/bin:$PATH" \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/app"
 
 # Development command runs uvicorn with reload
@@ -49,7 +51,9 @@ RUN groupadd -g 10001 appgroup && \
 
 # Only copy runtime dependencies
 COPY --from=prod-builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH" \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/app"
 
 # Copy source code and change ownership
