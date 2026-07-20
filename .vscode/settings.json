@@ -1,6 +1,9 @@
 {
     "cSpell.words": [
-        "sessionmaker"
+        "addopts",
+        "asyncio",
+        "sessionmaker",
+        "testpaths"
     ],
     "python.testing.pytestArgs": [
         "tests"

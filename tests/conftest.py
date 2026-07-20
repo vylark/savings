@@ -93,7 +93,7 @@ async def test_engine(setup_test_database: None) -> AsyncGenerator[AsyncEngine, 
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """Yield a transaction-wrapped test database session.
 
