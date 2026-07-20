@@ -75,6 +75,9 @@ async def setup_test_database() -> AsyncGenerator[None, None]:
 
     yield
 
+    get_engine.cache_clear()
+    get_sessionmaker.cache_clear()
+
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:

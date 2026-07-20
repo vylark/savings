@@ -1,4 +1,8 @@
+from typing import Any
+
 from fastapi import FastAPI
+
+from src.core.config import settings
 
 app = FastAPI(
     title="Savings and Investments API",
@@ -8,6 +12,10 @@ app = FastAPI(
 
 
 @app.get("/health", tags=["Health"])
-async def health_check() -> dict[str, str]:
+async def health_check() -> dict[str, Any]:
     """Health check endpoint to verify container and server operation."""
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "environment": settings.ENVIRONMENT,
+        "database_ssl": settings.DATABASE_SSL,
+    }
