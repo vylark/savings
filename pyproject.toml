@@ -32,3 +32,13 @@ venvPath = "."
 venv = ".venv"
 extraPaths = ["."]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Explicitly set default loop scope for pytest-asyncio 0.24+ to silence deprecation warnings
+asyncio_default_test_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--strict-markers --cov=src --cov-report=term-missing"
+
+
