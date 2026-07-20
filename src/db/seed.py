@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import text
 
-from src.db.session import AsyncSessionLocal
+from src.db.session import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class SeedError(Exception):
 async def seed_development_data():
     """Populates local development database with baseline seeds if they don't exist."""
     logger.info("Checking database for seeding...")
-    async with AsyncSessionLocal() as session:
+    async with create_session() as session:
         # NOTE: Once the User model is introduced in Epic 1, replace this placeholder
         # SQL with SQLAlchemy queries that verify and create a default admin/test user.
         try:

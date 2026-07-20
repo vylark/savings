@@ -36,7 +36,7 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     )
 
 
-def AsyncSessionLocal() -> AsyncSession:
+def create_session() -> AsyncSession:
     """Helper function to instantiate a new AsyncSession."""
     return get_sessionmaker()()
 
