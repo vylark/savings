@@ -52,8 +52,9 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode (with live connection)."""
     configuration = config.get_section(config.config_ini_section) or {}
-    # Inject our dynamic DATABASE_URL
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    # Inject our dynamic DATABASE_URL if not already explicitly set
+    if not configuration.get("sqlalchemy.url"):
+        configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = async_engine_from_config(
         configuration,
@@ -70,4 +71,8 @@ async def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    connection = config.attributes.get("connection", None)
+    if connection is not None:
+        do_run_migrations(connection)
+    else:
+        asyncio.run(run_migrations_online())

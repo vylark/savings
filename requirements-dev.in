@@ -1,6 +1,7 @@
 -c requirements.txt
 pytest
 pytest-asyncio
+pytest-cov
 httpx
 ruff
 pre-commit

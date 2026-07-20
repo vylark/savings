@@ -30,6 +30,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml
     ports:
       - "${PORT:-8000}:8000"
     env_file:
