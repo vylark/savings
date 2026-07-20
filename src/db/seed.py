@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from sqlalchemy import text
 
@@ -33,8 +34,9 @@ async def seed_development_data():
             else:
                 print("User table does not exist yet. Run migrations first.")
         except Exception as e:
-            print(f"Error during seeding: {e}")
+            print(f"Error during seeding: {e}", file=sys.stderr)
             await session.rollback()
+            raise
 
 
 if __name__ == "__main__":

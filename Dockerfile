@@ -25,6 +25,7 @@ RUN uv venv /opt/venv
 RUN uv pip install --python /opt/venv/bin/python -r requirements.txt
 
 # Stage 2: Development runtime (hot-reloading, dev dependencies)
+# NOTE: src/ is not copied here; it is bind-mounted at runtime via docker-compose.yml.
 FROM python:3.12-slim AS development
 
 WORKDIR /app
