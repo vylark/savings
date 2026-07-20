@@ -8,6 +8,10 @@ from src.db.session import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 
 
+class SeedError(Exception):
+    """Custom exception raised when database seeding fails."""
+
+
 async def seed_development_data():
     """Populates local development database with baseline seeds if they don't exist."""
     logger.info("Checking database for seeding...")
@@ -35,10 +39,10 @@ async def seed_development_data():
                     logger.info("Database already contains user records. Skipping seed.")
             else:
                 logger.info("User table does not exist yet. Run migrations first.")
-        except Exception:
+        except Exception as exc:
             logger.exception("Error during seeding")
             await session.rollback()
-            raise
+            raise SeedError("Failed to complete database seeding step") from exc
 
 
 if __name__ == "__main__":
