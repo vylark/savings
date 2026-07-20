@@ -23,8 +23,9 @@ services:
       target: development
     container_name: savings_api
     # TODO(epic1): restart: on-failure:3 retries the full alembic+seed+uvicorn chain on failure.
-    # Once real migrations land, evaluate whether a partial migration followed by a retry is safe
-    # (Alembic is idempotent for already-applied revisions, so this should be fine in practice).
+    # Once real migrations land, ensure all migrations execute within explicit transactions so that partial
+    # failures do not leave the database in an inconsistent state prior to container retry restarts.
+    # (Alembic is idempotent for already-applied revisions when migrations are transactional).
     restart: "on-failure:3"
     volumes:
       - ./src:/app/src
