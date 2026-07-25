@@ -1,3 +1,5 @@
+"""Integration tests for application health check endpoint."""
+
 from httpx import AsyncClient
 
 

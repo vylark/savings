@@ -1,3 +1,5 @@
+"""Integration tests for application endpoints including authentication and user management."""
+
 import pytest
 from httpx import AsyncClient
 
@@ -6,6 +8,7 @@ from src.core.constants import TaxBand
 
 @pytest.mark.asyncio
 async def test_health_endpoint(client: AsyncClient) -> None:
+    """Verify that the health check endpoint returns 200 OK with healthy status."""
     response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
@@ -13,6 +16,7 @@ async def test_health_endpoint(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_user_registration_success(client: AsyncClient) -> None:
+    """Verify successful registration of a new user with custom fields."""
     register_payload = {
         "email": "user@example.com",
         "password": "StrongPassword123!",
@@ -32,6 +36,7 @@ async def test_user_registration_success(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_user_registration_invalid_tax_band_returns_422(client: AsyncClient) -> None:
+    """Verify that user registration with an invalid tax band returns a 422 Unprocessable Entity error."""
     invalid_reg_payload = {
         "email": "user2@example.com",
         "password": "StrongPassword123!",
@@ -45,12 +50,15 @@ async def test_user_registration_invalid_tax_band_returns_422(client: AsyncClien
 
 @pytest.mark.asyncio
 async def test_users_me_unauthenticated_returns_401(client: AsyncClient) -> None:
+    """Verify that requesting the current user profile without authentication returns 401 Unauthorized."""
     unauth_response = await client.get("/users/me")
     assert unauth_response.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_jwt_login_success(client: AsyncClient) -> None:
+    """Verify that valid user credentials yield a JWT bearer access token."""
+    # Inline registration setup -- this test specifically exercises the login request flow and response payload.
     register_payload = {
         "email": "user@example.com",
         "password": "StrongPassword123!",
@@ -77,6 +85,7 @@ async def test_jwt_login_success(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_user_profile_read_and_update(authenticated_client: AsyncClient) -> None:
+    """Verify reading and updating the profile of an authenticated user via /users/me."""
     me_response = await authenticated_client.get("/users/me")
     assert me_response.status_code == 200
     profile_data = me_response.json()

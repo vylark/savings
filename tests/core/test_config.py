@@ -1,9 +1,12 @@
+"""Unit tests for Pydantic application settings and environment validation."""
+
 import pytest
 
 from src.core.config import Settings
 
 
 def test_default_settings_load() -> None:
+    """Verify loading default development settings and minimum secret length constraints."""
     settings = Settings()
     assert settings.ENVIRONMENT == "development"
     assert len(settings.RESET_PASSWORD_TOKEN_SECRET) >= 32
@@ -11,6 +14,7 @@ def test_default_settings_load() -> None:
 
 
 def test_production_validation_rejects_default_secrets() -> None:
+    """Verify that production validation rejects default development secrets for reset/verification tokens."""
     with pytest.raises(ValueError, match="RESET_PASSWORD_TOKEN_SECRET must be explicitly set"):
         Settings(
             ENVIRONMENT="production",

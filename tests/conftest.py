@@ -1,3 +1,5 @@
+"""Pytest configuration and fixture definitions for application test suite."""
+
 import sys
 from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
 from src.core.config import settings
+from src.core.constants import TaxBand
 from src.db.session import get_db_session, get_engine, get_sessionmaker
 from src.main import app
 
@@ -147,7 +150,7 @@ async def authenticated_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
         "password": "StrongPassword123!",
         "first_name": "Jane",
         "last_name": "Doe",
-        "tax_band": "higher",
+        "tax_band": TaxBand.HIGHER.value,
     }
     await client.post("/auth/register", json=register_payload)
 

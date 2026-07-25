@@ -1,8 +1,11 @@
+"""Unit tests for User ORM entity model mapping and attributes."""
+
 from src.core.constants import TaxBand
 from src.models.user import User
 
 
 def test_user_model_attributes() -> None:
+    """Verify that User ORM model initializes attributes correctly and sets tablename."""
     user = User(
         email="test@example.com",
         # arbitrary string -- testing ORM attribute presence, not password hashing logic
