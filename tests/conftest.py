@@ -137,3 +137,29 @@ async def client(override_app_dependencies: None) -> AsyncGenerator[httpx.AsyncC
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
         yield async_client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def authenticated_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
+    """Yield an HTTPX client pre-authenticated with a valid JWT Bearer token."""
+    register_payload = {
+        "email": "user@example.com",
+        "password": "StrongPassword123!",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "tax_band": "higher",
+    }
+    await client.post("/auth/register", json=register_payload)
+
+    login_data = {
+        "username": "user@example.com",
+        "password": "StrongPassword123!",
+    }
+    login_response = await client.post(
+        "/auth/jwt/login",
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    access_token = login_response.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {access_token}"
+    return client

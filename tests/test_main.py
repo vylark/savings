@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from src.core.constants import TaxBand
+
 
 @pytest.mark.asyncio
 async def test_health_endpoint(client: AsyncClient) -> None:
@@ -16,7 +18,7 @@ async def test_user_registration_success(client: AsyncClient) -> None:
         "password": "StrongPassword123!",
         "first_name": "Jane",
         "last_name": "Doe",
-        "tax_band": "higher",
+        "tax_band": TaxBand.HIGHER.value,
     }
     reg_response = await client.post("/auth/register", json=register_payload)
     assert reg_response.status_code == 201
@@ -25,7 +27,7 @@ async def test_user_registration_success(client: AsyncClient) -> None:
     assert user_data["email"] == "user@example.com"
     assert user_data["first_name"] == "Jane"
     assert user_data["last_name"] == "Doe"
-    assert user_data["tax_band"] == "higher"
+    assert user_data["tax_band"] == TaxBand.HIGHER.value
 
 
 @pytest.mark.asyncio
@@ -54,7 +56,7 @@ async def test_jwt_login_success(client: AsyncClient) -> None:
         "password": "StrongPassword123!",
         "first_name": "Jane",
         "last_name": "Doe",
-        "tax_band": "higher",
+        "tax_band": TaxBand.HIGHER.value,
     }
     await client.post("/auth/register", json=register_payload)
 
@@ -74,37 +76,16 @@ async def test_jwt_login_success(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_user_profile_read_and_update(client: AsyncClient) -> None:
-    register_payload = {
-        "email": "user@example.com",
-        "password": "StrongPassword123!",
-        "first_name": "Jane",
-        "last_name": "Doe",
-        "tax_band": "higher",
-    }
-    await client.post("/auth/register", json=register_payload)
-
-    login_data = {
-        "username": "user@example.com",
-        "password": "StrongPassword123!",
-    }
-    login_response = await client.post(
-        "/auth/jwt/login",
-        data=login_data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    access_token = login_response.json()["access_token"]
-    headers = {"Authorization": f"Bearer {access_token}"}
-
-    me_response = await client.get("/users/me", headers=headers)
+async def test_user_profile_read_and_update(authenticated_client: AsyncClient) -> None:
+    me_response = await authenticated_client.get("/users/me")
     assert me_response.status_code == 200
     profile_data = me_response.json()
     assert profile_data["email"] == "user@example.com"
     assert profile_data["first_name"] == "Jane"
 
-    patch_payload = {"first_name": "Janet", "tax_band": "additional"}
-    patch_response = await client.patch("/users/me", json=patch_payload, headers=headers)
+    patch_payload = {"first_name": "Janet", "tax_band": TaxBand.ADDITIONAL.value}
+    patch_response = await authenticated_client.patch("/users/me", json=patch_payload)
     assert patch_response.status_code == 200
     updated_data = patch_response.json()
     assert updated_data["first_name"] == "Janet"
-    assert updated_data["tax_band"] == "additional"
+    assert updated_data["tax_band"] == TaxBand.ADDITIONAL.value

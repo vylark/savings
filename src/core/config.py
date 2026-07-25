@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         DATABASE_SSL: Enables SSL mode for database connections.
         DATABASE_CA_FILE: Path to custom CA certificate file for SSL verification.
         JWT_SECRET: Secret key used to sign and verify session JWT access tokens.
+        JWT_LIFETIME_SECONDS: Token lifetime in seconds for issued JWT access tokens.
         RESET_PASSWORD_TOKEN_SECRET: Secret key used to sign password reset tokens.
         VERIFICATION_TOKEN_SECRET: Secret key used to sign account verification tokens.
     """
