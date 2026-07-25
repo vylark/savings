@@ -36,6 +36,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    """Configures migration context and runs all pending migrations synchronously.
+
+    Args:
+        connection: Active database connection instance.
+    """
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         default=_DEV_DEFAULT_JWT_SECRET,
         min_length=32,
     )
+    JWT_LIFETIME_SECONDS: int = Field(
+        default=1800,
+        ge=60,
+    )
     RESET_PASSWORD_TOKEN_SECRET: str = Field(
         default=_DEV_DEFAULT_RESET_PASSWORD_SECRET,
         min_length=32,

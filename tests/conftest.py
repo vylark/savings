@@ -28,6 +28,7 @@ async def create_test_db_if_not_exists() -> None:
     connection_string = base_url.replace("postgresql+asyncpg://", "postgresql://")
     parsed = urlparse(connection_string)
     host = parsed.hostname or "127.0.0.1"
+    # asyncpg on Windows fails to resolve 'localhost' automatically in some socket configurations
     if host == "localhost":
         host = "127.0.0.1"
     connect_kwargs: dict = {
@@ -58,7 +59,7 @@ async def create_test_db_if_not_exists() -> None:
 async def setup_test_database() -> AsyncGenerator[None, None]:
     """Create test database and run migrations once per session.
 
-    Note: The test database schema persists across sessions for performance.
+    Downgrades to base and upgrades to head on each test session to guarantee a clean schema.
     """
     await create_test_db_if_not_exists()
 
@@ -66,13 +67,14 @@ async def setup_test_database() -> AsyncGenerator[None, None]:
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
 
-    def run_upgrade(connection: Connection) -> None:
+    def run_migrations(connection: Connection) -> None:
         alembic_cfg.attributes["connection"] = connection
+        command.downgrade(alembic_cfg, "base")
         command.upgrade(alembic_cfg, "head")
 
     migration_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with migration_engine.connect() as conn:
-        await conn.run_sync(run_upgrade)
+        await conn.run_sync(run_migrations)
     await migration_engine.dispose()
 
     get_engine.cache_clear()

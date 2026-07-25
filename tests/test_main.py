@@ -10,8 +10,7 @@ async def test_health_endpoint(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_and_user_flow(client: AsyncClient) -> None:
-    # 1. Register a new user
+async def test_user_registration_success(client: AsyncClient) -> None:
     register_payload = {
         "email": "user@example.com",
         "password": "StrongPassword123!",
@@ -28,7 +27,9 @@ async def test_auth_and_user_flow(client: AsyncClient) -> None:
     assert user_data["last_name"] == "Doe"
     assert user_data["tax_band"] == "higher"
 
-    # 2. Try registering with invalid tax_band (should fail with 422)
+
+@pytest.mark.asyncio
+async def test_user_registration_invalid_tax_band_returns_422(client: AsyncClient) -> None:
     invalid_reg_payload = {
         "email": "user2@example.com",
         "password": "StrongPassword123!",
@@ -39,11 +40,24 @@ async def test_auth_and_user_flow(client: AsyncClient) -> None:
     invalid_reg_response = await client.post("/auth/register", json=invalid_reg_payload)
     assert invalid_reg_response.status_code == 422
 
-    # 3. Unauthenticated access to /users/me should return 401
+
+@pytest.mark.asyncio
+async def test_users_me_unauthenticated_returns_401(client: AsyncClient) -> None:
     unauth_response = await client.get("/users/me")
     assert unauth_response.status_code == 401
 
-    # 4. Login to obtain JWT access token
+
+@pytest.mark.asyncio
+async def test_jwt_login_success(client: AsyncClient) -> None:
+    register_payload = {
+        "email": "user@example.com",
+        "password": "StrongPassword123!",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "tax_band": "higher",
+    }
+    await client.post("/auth/register", json=register_payload)
+
     login_data = {
         "username": "user@example.com",
         "password": "StrongPassword123!",
@@ -57,17 +71,37 @@ async def test_auth_and_user_flow(client: AsyncClient) -> None:
     token_data = login_response.json()
     assert "access_token" in token_data
     assert token_data["token_type"] == "bearer"
-    access_token = token_data["access_token"]
 
-    # 5. Fetch profile using Authorization Bearer token
+
+@pytest.mark.asyncio
+async def test_user_profile_read_and_update(client: AsyncClient) -> None:
+    register_payload = {
+        "email": "user@example.com",
+        "password": "StrongPassword123!",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "tax_band": "higher",
+    }
+    await client.post("/auth/register", json=register_payload)
+
+    login_data = {
+        "username": "user@example.com",
+        "password": "StrongPassword123!",
+    }
+    login_response = await client.post(
+        "/auth/jwt/login",
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    access_token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {access_token}"}
+
     me_response = await client.get("/users/me", headers=headers)
     assert me_response.status_code == 200
     profile_data = me_response.json()
     assert profile_data["email"] == "user@example.com"
     assert profile_data["first_name"] == "Jane"
 
-    # 6. Update user profile via PATCH /users/me
     patch_payload = {"first_name": "Janet", "tax_band": "additional"}
     patch_response = await client.patch("/users/me", json=patch_payload, headers=headers)
     assert patch_response.status_code == 200

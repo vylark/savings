@@ -4,7 +4,7 @@ Contains the SQLAlchemy User ORM entity representing user credentials and profil
 """
 
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
-from sqlalchemy import String
+from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.constants import TaxBand
@@ -27,8 +27,8 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
 
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    tax_band: Mapped[str] = mapped_column(
-        String(20),
-        default=TaxBand.BASIC.value,
+    tax_band: Mapped[TaxBand] = mapped_column(
+        Enum(TaxBand, native_enum=False, length=20),
+        default=TaxBand.BASIC,
         nullable=False,
     )

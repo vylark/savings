@@ -25,7 +25,7 @@ def get_jwt_strategy() -> JWTStrategy[User, uuid.UUID]:
     """
     return JWTStrategy(
         secret=settings.JWT_SECRET,
-        lifetime_seconds=1800,
+        lifetime_seconds=settings.JWT_LIFETIME_SECONDS,
     )
 
 

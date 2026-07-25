@@ -23,8 +23,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     Handles account registration, password reset token generation, and authentication lifecycle.
     """
 
-    reset_password_token_secret = settings.RESET_PASSWORD_TOKEN_SECRET
-    verification_token_secret = settings.VERIFICATION_TOKEN_SECRET
+    def __init__(self, user_db: SQLAlchemyUserDatabase[User, uuid.UUID]) -> None:
+        """Initializes UserManager instance with dynamic configuration settings."""
+        super().__init__(user_db)
+        self.reset_password_token_secret = settings.RESET_PASSWORD_TOKEN_SECRET
+        self.verification_token_secret = settings.VERIFICATION_TOKEN_SECRET
 
 
 async def get_user_db(

@@ -12,6 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 from fastapi_users_db_sqlalchemy.generics import GUID
 
+from src.core.constants import TaxBand
+
 # revision identifiers, used by Alembic.
 revision: str = "0001_create_user_table"
 down_revision: str | None = None
@@ -30,7 +32,12 @@ def upgrade() -> None:
         sa.Column("is_verified", sa.Boolean(), nullable=False),
         sa.Column("first_name", sa.String(length=100), nullable=False),
         sa.Column("last_name", sa.String(length=100), nullable=False),
-        sa.Column("tax_band", sa.String(length=20), nullable=False, server_default="basic"),
+        sa.Column(
+            "tax_band",
+            sa.Enum(TaxBand, native_enum=False, length=20),
+            nullable=False,
+            server_default=TaxBand.BASIC.value,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_user_email"), "user", ["email"], unique=True)
