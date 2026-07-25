@@ -1,3 +1,5 @@
+"""Pytest configuration and fixture definitions for application test suite."""
+
 import sys
 from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
 from src.core.config import settings
+from src.core.constants import TaxBand
 from src.db.session import get_db_session, get_engine, get_sessionmaker
 from src.main import app
 
@@ -28,6 +31,7 @@ async def create_test_db_if_not_exists() -> None:
     connection_string = base_url.replace("postgresql+asyncpg://", "postgresql://")
     parsed = urlparse(connection_string)
     host = parsed.hostname or "127.0.0.1"
+    # asyncpg on Windows fails to resolve 'localhost' automatically in some socket configurations
     if host == "localhost":
         host = "127.0.0.1"
     connect_kwargs: dict = {
@@ -37,10 +41,8 @@ async def create_test_db_if_not_exists() -> None:
         "port": parsed.port or 5432,
         "database": "postgres",
     }
-    # asyncpg defaults to GSSAPI authentication on Windows, which conflicts with native Postgres.
-    # Force SSPI to avoid authentication errors on Win32 hosts.
     if sys.platform == "win32":
-        connect_kwargs["gsslib"] = "sspi"
+        connect_kwargs["gsslib"] = None
     conn = await asyncpg.connect(**connect_kwargs)
     try:
         exists = await conn.fetchval(
@@ -60,7 +62,7 @@ async def create_test_db_if_not_exists() -> None:
 async def setup_test_database() -> AsyncGenerator[None, None]:
     """Create test database and run migrations once per session.
 
-    Note: The test database schema persists across sessions for performance.
+    Downgrades to base and upgrades to head on each test session to guarantee a clean schema.
     """
     await create_test_db_if_not_exists()
 
@@ -68,13 +70,14 @@ async def setup_test_database() -> AsyncGenerator[None, None]:
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
 
-    def run_upgrade(connection: Connection) -> None:
+    def run_migrations(connection: Connection) -> None:
         alembic_cfg.attributes["connection"] = connection
+        command.downgrade(alembic_cfg, "base")
         command.upgrade(alembic_cfg, "head")
 
     migration_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with migration_engine.connect() as conn:
-        await conn.run_sync(run_upgrade)
+        await conn.run_sync(run_migrations)
     await migration_engine.dispose()
 
     get_engine.cache_clear()
@@ -137,3 +140,29 @@ async def client(override_app_dependencies: None) -> AsyncGenerator[httpx.AsyncC
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
         yield async_client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def authenticated_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
+    """Yield an HTTPX client pre-authenticated with a valid JWT Bearer token."""
+    register_payload = {
+        "email": "user@example.com",
+        "password": "StrongPassword123!",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "tax_band": TaxBand.HIGHER.value,
+    }
+    await client.post("/auth/register", json=register_payload)
+
+    login_data = {
+        "username": "user@example.com",
+        "password": "StrongPassword123!",
+    }
+    login_response = await client.post(
+        "/auth/jwt/login",
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    access_token = login_response.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {access_token}"
+    return client

@@ -6,10 +6,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import src.models  # noqa: F401
 from src.core.config import settings
-
-# Import base target metadata from your models when created
-# from src.db.base import Base
+from src.db.base import Base
 
 # Alembic Config object
 config = context.config
@@ -18,13 +17,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set target metadata for autogenerate detection.
-# WARNING: target_metadata is intentionally None until SQLAlchemy models are
-# created. While None, `alembic revision --autogenerate` will silently generate
-# empty migrations with no schema changes detected. Once models exist, replace
-# the line below with `target_metadata = Base.metadata` to enable autogenerate.
-# target_metadata = Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -43,6 +36,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    """Configures migration context and runs all pending migrations synchronously.
+
+    Args:
+        connection: Active database connection instance.
+    """
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
