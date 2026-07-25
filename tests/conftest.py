@@ -37,10 +37,8 @@ async def create_test_db_if_not_exists() -> None:
         "port": parsed.port or 5432,
         "database": "postgres",
     }
-    # asyncpg defaults to GSSAPI authentication on Windows, which conflicts with native Postgres.
-    # Force SSPI to avoid authentication errors on Win32 hosts.
     if sys.platform == "win32":
-        connect_kwargs["gsslib"] = "sspi"
+        connect_kwargs["gsslib"] = None
     conn = await asyncpg.connect(**connect_kwargs)
     try:
         exists = await conn.fetchval(
