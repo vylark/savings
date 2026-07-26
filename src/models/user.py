@@ -32,3 +32,5 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         default=TaxBand.BASIC,
         nullable=False,
     )
+    totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_totp_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)

@@ -7,12 +7,14 @@ and FastAPI dependency injection adapters for user database operations.
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends
-from fastapi_users import BaseUserManager, UUIDIDMixin
+from fastapi import Depends, Request
+from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.auth import auth_backend
 from src.core.config import settings
+from src.core.mail import send_transactional_email
 from src.db.session import get_db_session
 from src.models.user import User
 
@@ -28,6 +30,48 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         super().__init__(user_db)
         self.reset_password_token_secret = settings.RESET_PASSWORD_TOKEN_SECRET
         self.verification_token_secret = settings.VERIFICATION_TOKEN_SECRET
+
+    async def on_after_register(self, user: User, request: Request | None = None) -> None:
+        """Lifecycle hook invoked following successful user registration.
+
+        Args:
+            user: Registered User entity instance.
+            request: Optional active FastAPI Request object.
+        """
+        await send_transactional_email(
+            subject="Welcome to Savings Platform",
+            recipient_email=user.email,
+            body_text=f"Welcome {user.first_name}!",
+        )
+        await self.request_verify(user, request)
+
+    async def on_after_request_verify(self, user: User, token: str, request: Request | None = None) -> None:
+        """Lifecycle hook invoked when a user requests an account verification token.
+
+        Args:
+            user: Requesting User entity instance.
+            token: Generated account verification token string.
+            request: Optional active FastAPI Request object.
+        """
+        await send_transactional_email(
+            subject="Account Verification Token",
+            recipient_email=user.email,
+            body_text=f"Hello {user.first_name}, your email verification token is: {token}",
+        )
+
+    async def on_after_forgot_password(self, user: User, token: str, request: Request | None = None) -> None:
+        """Lifecycle hook invoked when a user requests a password reset token.
+
+        Args:
+            user: Requesting User entity instance.
+            token: Generated password reset token string.
+            request: Optional active FastAPI Request object.
+        """
+        await send_transactional_email(
+            subject="Password Reset Request",
+            recipient_email=user.email,
+            body_text=f"Hello {user.first_name}, your password reset token is: {token}",
+        )
 
 
 async def get_user_db(
@@ -56,3 +100,12 @@ async def get_user_manager(
         UserManager instance initialized with user database adapter.
     """
     yield UserManager(user_db)
+
+
+fastapi_users = FastAPIUsers[User, uuid.UUID](
+    get_user_manager,
+    [auth_backend],
+)
+
+current_active_user = fastapi_users.current_user(active=True)
+current_verified_user = fastapi_users.current_user(active=True, verified=True)
