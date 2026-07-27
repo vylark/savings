@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import asyncpg
 import httpx
+import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
@@ -15,6 +16,8 @@ from sqlalchemy.pool import NullPool
 
 from src.core.config import settings
 from src.core.constants import TaxBand
+from src.core.limiter import limiter
+from src.core.mail import clear_outbox
 from src.db.session import get_db_session, get_engine, get_sessionmaker
 from src.main import app
 
@@ -22,6 +25,13 @@ from src.main import app
 TEST_DB_NAME = "savings_test"
 base_url, _ = settings.DATABASE_URL.rsplit("/", 1)
 TEST_DATABASE_URL = f"{base_url}/{TEST_DB_NAME}"
+
+
+@pytest.fixture(scope="function", autouse=True)
+def auto_reset_test_state() -> None:
+    """Automatically resets rate limiter and clears email outbox before each test execution."""
+    clear_outbox()
+    limiter.reset()
 
 
 async def create_test_db_if_not_exists() -> None:

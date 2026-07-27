@@ -1,10 +1,16 @@
 {
   "cSpell.words": [
     "addopts",
+    "ASGI",
     "asyncio",
     "asyncpg",
+    "autoflush",
+    "autouse",
+    "datname",
     "fastapi",
     "Fernet",
+    "fetchval",
+    "gsslib",
     "healthcheck",
     "otpauth",
     "pgdata",

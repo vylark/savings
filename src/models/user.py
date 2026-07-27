@@ -21,6 +21,8 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         first_name: Given name of the user.
         last_name: Surname of the user.
         tax_band: Tax band classification (defaults to 'basic').
+        totp_secret: Symmetric Fernet-encrypted TOTP secret string, nullable if 2FA unconfigured.
+        is_totp_enabled: Boolean flag indicating whether TOTP 2FA is active for this account.
     """
 
     __tablename__ = "user"

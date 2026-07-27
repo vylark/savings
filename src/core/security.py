@@ -21,12 +21,7 @@ def _get_fernet_cipher() -> Fernet:
     Returns:
         Fernet cipher instance configured with application encryption key.
     """
-    key = settings.TOTP_SECRET_KEY
-    if len(key) != 44 or not key.endswith("="):
-        # Derive or encode key to 32 url-safe base64 bytes if raw string supplied
-        encoded_key = base64.urlsafe_b64encode(key.encode("utf-8")[:32].ljust(32, b"0"))
-        return Fernet(encoded_key)
-    return Fernet(key.encode("utf-8"))
+    return Fernet(settings.TOTP_SECRET_KEY.encode("utf-8"))
 
 
 def encrypt_secret(plain_secret: str) -> str:

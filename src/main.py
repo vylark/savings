@@ -5,6 +5,7 @@ and 2FA routers, and attaches slowapi rate limiting middleware.
 """
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.routing import APIRoute
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -30,6 +31,10 @@ app.add_middleware(SlowAPIMiddleware)
 
 # 1. Register Auth Router (handles login / logout) with 5 req/min rate limit on login
 auth_router = fastapi_users.get_auth_router(auth_backend)
+for route in auth_router.routes:
+    if isinstance(route, APIRoute) and route.path == "/login":
+        route.endpoint = limiter.limit("5/minute")(route.endpoint)
+
 app.include_router(
     auth_router,
     prefix="/auth/jwt",
@@ -38,6 +43,10 @@ app.include_router(
 
 # 2. Register Registration Router (handles account creation) with 3 req/hr rate limit
 register_router = fastapi_users.get_register_router(UserRead, UserCreate)
+for route in register_router.routes:
+    if isinstance(route, APIRoute) and route.path == "/register":
+        route.endpoint = limiter.limit("3/hour")(route.endpoint)
+
 app.include_router(
     register_router,
     prefix="/auth",

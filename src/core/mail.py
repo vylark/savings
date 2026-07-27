@@ -34,14 +34,13 @@ async def send_transactional_email(
         recipient_email: Destination recipient email address.
         body_text: Plaintext email body content.
     """
-    email_data = {
-        "subject": subject,
-        "recipient": recipient_email,
-        "body": body_text,
-    }
-    outbox.append(email_data)
-
     if settings.SUPPRESS_SEND or not settings.SMTP_HOST:
+        email_data = {
+            "subject": subject,
+            "recipient": recipient_email,
+            "body": body_text,
+        }
+        outbox.append(email_data)
         logger.info(
             f"Email send suppressed (SUPPRESS_SEND=True or SMTP unconfigured). Target: {recipient_email}, Subject: {subject}"
         )

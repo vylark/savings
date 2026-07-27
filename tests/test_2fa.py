@@ -44,6 +44,11 @@ async def test_2fa_enable_and_verify_flow(authenticated_client: httpx.AsyncClien
     assert verify_res.status_code == 200
     assert verify_res.json()["status"] == "success"
 
+    # 5. Attempt setup again while 2FA is enabled -> 409 Conflict
+    re_setup_res = await authenticated_client.post("/auth/2fa/setup")
+    assert re_setup_res.status_code == 409
+    assert "2FA is already enabled" in re_setup_res.json()["detail"]
+
 
 @pytest.mark.asyncio
 async def test_mandatory_require_totp_dependency(client: httpx.AsyncClient) -> None:
