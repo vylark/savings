@@ -31,9 +31,12 @@ app.add_middleware(SlowAPIMiddleware)
 
 # 1. Register Auth Router (handles login / logout) with 5 req/min rate limit on login
 auth_router = fastapi_users.get_auth_router(auth_backend)
+login_route_found = False
 for route in auth_router.routes:
     if isinstance(route, APIRoute) and route.path == "/login":
         route.endpoint = limiter.limit("5/minute")(route.endpoint)
+        login_route_found = True
+assert login_route_found, "Rate-limiting configuration error: '/login' route not found in auth_router"
 
 app.include_router(
     auth_router,
@@ -43,9 +46,12 @@ app.include_router(
 
 # 2. Register Registration Router (handles account creation) with 3 req/hr rate limit
 register_router = fastapi_users.get_register_router(UserRead, UserCreate)
+register_route_found = False
 for route in register_router.routes:
     if isinstance(route, APIRoute) and route.path == "/register":
         route.endpoint = limiter.limit("3/hour")(route.endpoint)
+        register_route_found = True
+assert register_route_found, "Rate-limiting configuration error: '/register' route not found in register_router"
 
 app.include_router(
     register_router,

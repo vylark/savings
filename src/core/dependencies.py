@@ -57,6 +57,12 @@ async def require_totp(
             detail="Missing required X-TOTP-Code header for protected operation.",
         )
 
+    if not x_totp_code.isdigit() or len(x_totp_code) != 6:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid 6-digit TOTP passcode format provided in X-TOTP-Code header.",
+        )
+
     plain_secret = decrypt_secret(user.totp_secret)
     if not verify_totp_code(plain_secret, x_totp_code):
         raise HTTPException(

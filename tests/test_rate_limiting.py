@@ -28,7 +28,7 @@ async def test_login_rate_limit_exceeded(client: httpx.AsyncClient) -> None:
     # 5 allowed requests
     for _ in range(5):
         res = await client.post("/auth/jwt/login", data=login_data, headers=headers)
-        assert res.status_code != 429
+        assert res.status_code in (200, 400, 401)
 
     # 6th request triggers rate limit (HTTP 429)
     res_exceeded = await client.post("/auth/jwt/login", data=login_data, headers=headers)

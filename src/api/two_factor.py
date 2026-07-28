@@ -86,6 +86,9 @@ async def setup_totp(
     plain_secret = generate_totp_secret()
     encrypted_secret = encrypt_secret(plain_secret)
 
+    # Persist the new encrypted TOTP secret before activation.
+    # Note: If setup is abandoned without calling /enable, re-initiating /setup will
+    # safely overwrite the un-enabled secret because is_totp_enabled remains False.
     user.totp_secret = encrypted_secret
     session.add(user)
     await session.commit()
