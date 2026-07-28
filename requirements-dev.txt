@@ -4,12 +4,19 @@ anyio==4.14.2
     # via
     #   -c requirements.txt
     #   httpx
-certifi==2026.6.17
+certifi==2026.7.22
     # via
+    #   -c requirements.txt
     #   httpcore
     #   httpx
 cfgv==3.5.0
     # via pre-commit
+colorama==0.4.6
+    # via
+    #   -c requirements.txt
+    #   pytest
+coverage==7.15.2
+    # via pytest-cov
 distlib==0.4.3
     # via virtualenv
 filelock==3.31.0
@@ -21,9 +28,13 @@ h11==0.16.0
     #   -c requirements.txt
     #   httpcore
 httpcore==1.0.9
-    # via httpx
+    # via
+    #   -c requirements.txt
+    #   httpx
 httpx==0.28.1
-    # via -r requirements-dev.in
+    # via
+    #   -c requirements.txt
+    #   -r requirements-dev.in
 identify==2.6.19
     # via pre-commit
 idna==3.18
@@ -36,19 +47,21 @@ iniconfig==2.3.0
 nodeenv==1.10.0
     # via pre-commit
 packaging==26.2
-    # via pytest
+    # via
+    #   -c requirements.txt
+    #   pytest
 platformdirs==4.10.1
     # via
     #   python-discovery
     #   virtualenv
 pluggy==1.6.0
-    # via pytest
+    # via
+    #   pytest
+    #   pytest-cov
 pre-commit==4.6.0
     # via -r requirements-dev.in
 pygments==2.20.0
     # via pytest
-coverage==7.15.2
-    # via pytest-cov
 pytest==9.1.1
     # via
     #   -r requirements-dev.in
