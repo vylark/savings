@@ -1,7 +1,7 @@
-"""Multi-Factor Authentication (TOTP 2FA) API routes and mandatory dependency module.
+"""Multi-Factor Authentication (TOTP 2FA) API router module.
 
-Provides endpoints for TOTP key setup, 2FA activation, code verification, and a reusable
-FastAPI dependency enforcing mandatory 2FA on high-risk operations.
+Provides endpoints for TOTP secret setup, 2FA activation, code verification, and a sample
+protected action endpoint demonstrating mandatory 2FA enforcement.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
