@@ -3,14 +3,12 @@
 import httpx
 import pytest
 
-from src.core.mail import clear_outbox, outbox
+from src.core.mail import outbox
 
 
 @pytest.mark.asyncio
 async def test_registration_dispatches_verification_email(client: httpx.AsyncClient) -> None:
     """Verifies that user registration dispatches welcome email and verification token into outbox."""
-    clear_outbox()
-
     payload = {
         "email": "verify.user@example.com",
         "password": "StrongPassword123!",
@@ -35,8 +33,6 @@ async def test_registration_dispatches_verification_email(client: httpx.AsyncCli
 @pytest.mark.asyncio
 async def test_email_verification_flow(client: httpx.AsyncClient) -> None:
     """Verifies account token verification transitioning user to is_verified=True state."""
-    clear_outbox()
-
     # 1. Register user
     reg_payload = {
         "email": "verify.flow@example.com",
