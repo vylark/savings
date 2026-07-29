@@ -56,7 +56,7 @@ async def test_mandatory_require_totp_dependency(client: httpx.AsyncClient) -> N
     # 1. Register a new user
     user_payload = {
         "email": "mandatory2fa@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Charlie",
         "last_name": "Brown",
         "tax_band": "basic",
@@ -65,7 +65,7 @@ async def test_mandatory_require_totp_dependency(client: httpx.AsyncClient) -> N
 
     login_res = await client.post(
         "/auth/jwt/login",
-        data={"username": "mandatory2fa@example.com", "password": "StrongPassword123!"},
+        data={"username": "mandatory2fa@example.com", "password": "SavingsPlatform2026!XyZ#9"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     token = login_res.json()["access_token"]

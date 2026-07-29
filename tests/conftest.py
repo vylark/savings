@@ -157,7 +157,7 @@ async def authenticated_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
     """Yield an HTTPX client pre-authenticated with a valid JWT Bearer token."""
     register_payload = {
         "email": "user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Jane",
         "last_name": "Doe",
         "tax_band": TaxBand.HIGHER.value,
@@ -166,7 +166,7 @@ async def authenticated_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
 
     login_data = {
         "username": "user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
     }
     login_response = await client.post(
         "/auth/jwt/login",

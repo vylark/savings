@@ -12,5 +12,6 @@ fastapi-mail
 pyotp
 qrcode
 pillow
+zxcvbn-python
 
 

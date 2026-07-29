@@ -12,9 +12,11 @@
     "fetchval",
     "gsslib",
     "healthcheck",
+    "HIBP",
     "otpauth",
     "pgdata",
     "poolclass",
+    "pwnedpasswords",
     "pydantic",
     "pyotp",
     "qrcode",
@@ -27,7 +29,8 @@
     "urllib",
     "urlopen",
     "UUIDID",
-    "uvicorn"
+    "uvicorn",
+    "zxcvbn"
   ],
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,

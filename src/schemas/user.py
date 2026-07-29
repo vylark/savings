@@ -6,7 +6,7 @@ Defines Pydantic request and response schemas for user account creation, reading
 import uuid
 
 from fastapi_users import schemas
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from src.core.constants import TaxBandType
 
@@ -25,7 +25,26 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     tax_band: TaxBandType
 
 
-class UserCreate(schemas.BaseUserCreate):
+class _WhitespaceTrimMixin:
+    """Mixin providing leading and trailing whitespace trimming for user string fields."""
+
+    @field_validator("email", "first_name", "last_name", mode="before", check_fields=False)
+    @classmethod
+    def strip_whitespace(cls, value: str | None) -> str | None:
+        """Strips leading and trailing whitespace from string inputs.
+
+        Args:
+            value: Raw input string or None.
+
+        Returns:
+            Trimmed string value or None.
+        """
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class UserCreate(schemas.BaseUserCreate, _WhitespaceTrimMixin):
     """Schema for validating user registration request payloads.
 
     Attributes:
@@ -39,7 +58,7 @@ class UserCreate(schemas.BaseUserCreate):
     tax_band: TaxBandType = "basic"
 
 
-class UserUpdate(schemas.BaseUserUpdate):
+class UserUpdate(schemas.BaseUserUpdate, _WhitespaceTrimMixin):
     """Schema for validating user profile update request payloads.
 
     Attributes:

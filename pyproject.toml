@@ -8,8 +8,8 @@ line-length = 120
 # pyupgrade (UP), and type annotation (ANN) rules
 select = ["F", "E", "W", "I", "B", "UP", "ANN"]
 ignore = [
-    "E501",    # Defer line length checks to the formatter
-    "ANN204",  # Missing return type annotation for special method (__init__)
+    "E501",   # Defer line length checks to the formatter
+    "ANN204", # Missing return type annotation for special method (__init__)
 ]
 
 # Allow autofix for all enabled rules
@@ -40,5 +40,4 @@ asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--strict-markers --cov=src --cov-report=term-missing"
-
-
+filterwarnings = ["ignore::DeprecationWarning:zxcvbn.*"]
