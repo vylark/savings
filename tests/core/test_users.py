@@ -22,9 +22,10 @@ def test_user_manager_initialization() -> None:
 async def test_validate_password_too_short() -> None:
     """Verify that validate_password raises InvalidPasswordException for passwords < 12 characters."""
     manager = UserManager(MagicMock())
-    with pytest.raises(InvalidPasswordException) as exc_info:
-        await manager.validate_password("Short1!")
-    assert "at least 12 characters" in exc_info.value.reason
+    with patch("src.core.users.is_password_pwned", new=AsyncMock(return_value=False)):
+        with pytest.raises(InvalidPasswordException) as exc_info:
+            await manager.validate_password("Short1!")
+        assert "at least 12 characters" in exc_info.value.reason
 
 
 @pytest.mark.asyncio
@@ -32,18 +33,20 @@ async def test_validate_password_too_long() -> None:
     """Verify that validate_password raises InvalidPasswordException for passwords > 128 characters."""
     manager = UserManager(MagicMock())
     long_password = "A" * 129
-    with pytest.raises(InvalidPasswordException) as exc_info:
-        await manager.validate_password(long_password)
-    assert "cannot exceed 128 characters" in exc_info.value.reason
+    with patch("src.core.users.is_password_pwned", new=AsyncMock(return_value=False)):
+        with pytest.raises(InvalidPasswordException) as exc_info:
+            await manager.validate_password(long_password)
+        assert "cannot exceed 128 characters long." in exc_info.value.reason
 
 
 @pytest.mark.asyncio
 async def test_validate_password_weak_entropy() -> None:
     """Verify that validate_password raises InvalidPasswordException for weak or dictionary passwords."""
     manager = UserManager(MagicMock())
-    with pytest.raises(InvalidPasswordException) as exc_info:
-        await manager.validate_password("password123456")
-    assert "Weak password" in exc_info.value.reason
+    with patch("src.core.users.is_password_pwned", new=AsyncMock(return_value=False)):
+        with pytest.raises(InvalidPasswordException) as exc_info:
+            await manager.validate_password("password123456")
+        assert "Weak password" in exc_info.value.reason
 
 
 @pytest.mark.asyncio

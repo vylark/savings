@@ -48,6 +48,18 @@ def test_user_create_schema_whitespace_trimming() -> None:
     assert user_data.last_name == "Smith"
 
 
+def test_user_create_schema_whitespace_only_invalid() -> None:
+    """Verify that UserCreate raises ValidationError when required string fields contain only whitespace."""
+    with pytest.raises(ValidationError):
+        UserCreate(
+            email="test@example.com",
+            password="SavingsPlatform2026!XyZ#9",
+            first_name="   ",
+            last_name="Smith",
+            tax_band=TaxBand.BASIC.value,
+        )
+
+
 def test_user_update_schema() -> None:
     """Verify that UserUpdate supports partial attribute updates and validates tax band values."""
     update_data = UserUpdate(first_name="  Bob  ", tax_band=TaxBand.ADDITIONAL.value)

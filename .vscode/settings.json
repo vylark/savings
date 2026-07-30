@@ -26,6 +26,7 @@
     "testpaths",
     "TOTP",
     "unconfigured",
+    "unpwned",
     "urllib",
     "urlopen",
     "UUIDID",

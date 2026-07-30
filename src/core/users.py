@@ -5,6 +5,7 @@ and FastAPI dependency injection adapters for user database operations.
 """
 
 import hashlib
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -21,6 +22,8 @@ from src.core.config import settings
 from src.core.mail import send_transactional_email
 from src.db.session import get_db_session
 from src.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 async def is_password_pwned(password: str) -> bool:
@@ -46,8 +49,14 @@ async def is_password_pwned(password: str) -> bool:
                 for h, _count in hashes:
                     if h == suffix:
                         return True
-        except httpx.RequestError:
-            # Fallback gracefully if HIBP API is unreachable
+            else:
+                # Non-200 responses (e.g. rate limiting 429, service unavailable 503) log a warning
+                # and fall through to return False (fail-open strategy so third-party degradation
+                # does not block user registration).
+                logger.warning(f"HIBP API returned non-200 status code {response.status_code} for prefix {prefix}")
+        except httpx.RequestError as exc:
+            # Fail-open gracefully if HIBP API is unreachable or times out
+            logger.warning(f"HIBP API request failed for prefix {prefix}: {exc}")
             return False
     return False
 
@@ -75,6 +84,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             password: Raw password candidate string.
             user: Associated UserCreate request schema or User entity instance if available.
 
+        Returns:
+            None if the password satisfies all length, entropy, and breach criteria.
+
         Raises:
             InvalidPasswordException: If password violates length, entropy score, or HIBP checks.
         """
@@ -85,7 +97,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             raise InvalidPasswordException(reason=f"Password must be at least {min_length} characters long.")
 
         if len(password) > max_length:
-            raise InvalidPasswordException(reason=f"Password cannot exceed {max_length} characters.")
+            raise InvalidPasswordException(reason=f"Password cannot exceed {max_length} characters long.")
 
         # Build user-specific context for zxcvbn dictionary matching
         user_inputs: list[str] = []
