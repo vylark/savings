@@ -37,8 +37,10 @@ async def test_user_registration_success(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_user_registration_duplicate_email_returns_400(client: AsyncClient) -> None:
     """Verify that attempting to register with an existing email returns HTTP 400."""
+    import uuid
+    unique_email = f"duplicate-{uuid.uuid4()}@example.com"
     register_payload = {
-        "email": "duplicate@example.com",
+        "email": unique_email,
         "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Alice",
         "last_name": "Smith",

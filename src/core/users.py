@@ -26,7 +26,12 @@ from src.models.user import User
 logger = logging.getLogger(__name__)
 
 
-async def is_password_pwned(password: str) -> bool:
+class HIBPServiceException(Exception):
+    """Raised when the HIBP API check fails due to network issues or service degradation."""
+    pass
+
+
+async def is_password_pwned(password: str, client: httpx.AsyncClient | None = None) -> bool:
     """Checks whether a password has appeared in a known data breach using HIBP API.
 
     Uses k-Anonymity by hashing the password with SHA-1 and querying api.pwnedpasswords.com
@@ -34,31 +39,42 @@ async def is_password_pwned(password: str) -> bool:
 
     Args:
         password: Raw plaintext password to evaluate.
+        client: Optional shared HTTPX async client.
 
     Returns:
         True if the password hash suffix is present in the HIBP response, False otherwise.
+
+    Raises:
+        HIBPServiceException: If the HIBP API is unreachable or returns a non-200 status code.
     """
     sha1_hash = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
     prefix, suffix = sha1_hash[:5], sha1_hash[5:]
 
-    async with httpx.AsyncClient(timeout=3.0) as client:
+    async def _query(c: httpx.AsyncClient) -> bool:
         try:
-            response = await client.get(f"https://api.pwnedpasswords.com/range/{prefix}")
+            response = await c.get(f"https://api.pwnedpasswords.com/range/{prefix}")
             if response.status_code == 200:
                 hashes = (line.split(":") for line in response.text.splitlines())
                 for h, _count in hashes:
                     if h == suffix:
                         return True
+                return False
             else:
-                # Non-200 responses (e.g. rate limiting 429, service unavailable 503) log a warning
-                # and fall through to return False (fail-open strategy so third-party degradation
-                # does not block user registration).
-                logger.warning(f"HIBP API returned non-200 status code {response.status_code} for prefix {prefix}")
-        except httpx.RequestError as exc:
-            # Fail-open gracefully if HIBP API is unreachable or times out
-            logger.warning(f"HIBP API request failed for prefix {prefix}: {exc}")
-            return False
-    return False
+                logger.warning(
+                    f"HIBP API returned non-200 status code {response.status_code} for prefix {prefix}"
+                )
+                raise HIBPServiceException(f"HIBP API returned status code {response.status_code}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            logger.warning(
+                f"HIBP API request failed for prefix {prefix}: {exc.__class__.__name__}"
+            )
+            raise HIBPServiceException("HIBP API request failed") from exc
+
+    if client is not None:
+        return await _query(client)
+
+    async with httpx.AsyncClient(timeout=settings.HIBP_TIMEOUT) as client_new:
+        return await _query(client_new)
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -90,8 +106,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         Raises:
             InvalidPasswordException: If password violates length, entropy score, or HIBP checks.
         """
-        min_length = 12
-        max_length = 128
+        min_length = settings.PASSWORD_MIN_LENGTH
+        max_length = settings.PASSWORD_MAX_LENGTH
 
         if len(password) < min_length:
             raise InvalidPasswordException(reason=f"Password must be at least {min_length} characters long.")
@@ -137,10 +153,16 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             if zxcvbn_result is not None:
                 del zxcvbn_result
 
-        if await is_password_pwned(password):
-            raise InvalidPasswordException(
-                reason="This password has appeared in a known data breach. Please choose a different password."
-            )
+        try:
+            if await is_password_pwned(password):
+                raise InvalidPasswordException(
+                    reason="This password has appeared in a known data breach. Please choose a different password."
+                )
+        except HIBPServiceException as exc:
+            if not settings.HIBP_FAIL_OPEN:
+                raise InvalidPasswordException(
+                    reason="Password verification service is currently unavailable. Please try again later."
+                ) from exc
 
     async def on_after_register(self, user: User, request: Request | None = None) -> None:
         """Lifecycle hook invoked following successful user registration.

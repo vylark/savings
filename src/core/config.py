@@ -68,6 +68,12 @@ class Settings(BaseSettings):
         min_length=32,
     )
 
+    # Password Policy & HIBP Validation
+    PASSWORD_MIN_LENGTH: int = Field(default=12, ge=8)
+    PASSWORD_MAX_LENGTH: int = Field(default=128, le=256)
+    HIBP_FAIL_OPEN: bool = Field(default=True)
+    HIBP_TIMEOUT: float = Field(default=3.0, ge=0.1)
+
     # Redis & Rate Limiting
     REDIS_URL: str | None = Field(default=None)
 
