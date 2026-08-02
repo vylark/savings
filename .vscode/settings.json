@@ -37,5 +37,18 @@
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
   "python.languageServer": "Default",
-  "python.analysis.typeCheckingMode": "standard"
+  "spellright.language": [
+    "en"
+  ],
+  "spellright.documentTypes": [
+    "markdown",
+    "latex",
+    "plaintext",
+    "tex"
+  ],
+  "spellright.parserByClass": {
+    "dotenv": {
+      "parser": "plain"
+    }
+  },
 }
