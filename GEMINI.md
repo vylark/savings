@@ -22,5 +22,10 @@ All commit messages must follow the **Conventional Commits 1.0.0** specification
 ## 4. FastAPI & Async Conventions
 *   **Asynchronous I/O**: Use `async def` for endpoints and service methods performing database queries or network requests.
 *   **Rate Limiting**: Always apply slowapi `@limiter.limit` decorators to sensitive, authenticated, or public-facing API endpoints to prevent abuse.
-*   **Router Registration**: Verify that all new API routers are properly registered in the main FastAPI application startup flow.
+
+## 5. PR Code Reviews & GH CLI Guidelines
+* **Mandatory Use of GH CLI**: When requested to perform a code review on a Pull Request, always execute the review using the GitHub CLI (`gh pr view`, `gh pr diff`, `gh pr review`).
+* **Context & History Awareness**: Prior to performing a code review, always fetch and analyze previous comments and review history on the PR (`gh pr view <PR> --json reviews,comments`) to prevent regressions or conflicting recommendations.
+* **Self-Authored PR Restrictions**: GitHub API does not permit requesting changes or approving PRs authored by the authenticated user account. When reviewing a PR owned by the current user, submit the review using `--comment` instead of `--request-changes` or `--approve`.
+
 

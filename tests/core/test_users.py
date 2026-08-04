@@ -68,7 +68,8 @@ async def test_validate_password_valid_success() -> None:
         last_name="Doe",
     )
     with patch("src.core.users.is_password_pwned", new=AsyncMock(return_value=False)):
-        await manager.validate_password("SavingsPlatform2026!XyZ#9", user=user_schema)
+        res = await manager.validate_password("SavingsPlatform2026!XyZ#9", user=user_schema)
+        assert res is None
 
 
 @pytest.mark.asyncio
@@ -78,7 +79,8 @@ async def test_validate_password_hibp_service_fail_open_success() -> None:
     with patch("src.core.users.is_password_pwned", side_effect=HIBPServiceException("Offline")):
         with patch("src.core.users.settings.HIBP_FAIL_OPEN", True):
             # Should not raise exception
-            await manager.validate_password("SavingsPlatform2026!XyZ#9")
+            res = await manager.validate_password("SavingsPlatform2026!XyZ#9")
+            assert res is None
 
 
 @pytest.mark.asyncio

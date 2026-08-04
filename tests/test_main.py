@@ -1,5 +1,7 @@
 """Integration tests for application endpoints including authentication and user management."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -37,7 +39,6 @@ async def test_user_registration_success(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_user_registration_duplicate_email_returns_400(client: AsyncClient) -> None:
     """Verify that attempting to register with an existing email returns HTTP 400."""
-    import uuid
     unique_email = f"duplicate-{uuid.uuid4()}@example.com"
     register_payload = {
         "email": unique_email,

@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 class HIBPServiceException(Exception):
     """Raised when the HIBP API check fails due to network issues or service degradation."""
-    pass
 
 
 async def is_password_pwned(password: str, client: httpx.AsyncClient | None = None) -> bool:
@@ -60,14 +59,10 @@ async def is_password_pwned(password: str, client: httpx.AsyncClient | None = No
                         return True
                 return False
             else:
-                logger.warning(
-                    f"HIBP API returned non-200 status code {response.status_code} for prefix {prefix}"
-                )
+                logger.warning(f"HIBP API returned non-200 status code {response.status_code} for prefix {prefix}")
                 raise HIBPServiceException(f"HIBP API returned status code {response.status_code}")
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-            logger.warning(
-                f"HIBP API request failed for prefix {prefix}: {exc.__class__.__name__}"
-            )
+            logger.warning(f"HIBP API request failed for prefix {prefix}: {exc.__class__.__name__}")
             raise HIBPServiceException("HIBP API request failed") from exc
 
     if client is not None:
