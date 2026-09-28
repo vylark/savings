@@ -1,3 +1,14 @@
+[project]
+name = "savings"
+version = "0.1.0"
+description = "Savings & Investments double-entry ledger REST API"
+authors = [
+    { name = "James Heath (Vylark)", email = "james.heath@vylark.uk" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.12"
+
 [tool.ruff]
 # Target python version
 target-version = "py312"
