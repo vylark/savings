@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+sqlalchemy[asyncio]
+asyncpg
+fastapi-users[sqlalchemy]
+alembic
+cryptography
+slowapi
+redis
+fastapi-mail
+pyotp
+qrcode
+pillow
+zxcvbn-python

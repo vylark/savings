@@ -1,0 +1,75 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: savings_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-savings_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-savings_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-savings_dev}
+    ports:
+      # Mapped host port to 5433 to avoid collision with native PostgreSQL instances on Windows
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-savings_user} -d $${POSTGRES_DB:-savings_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: savings_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      target: development
+    container_name: savings_api
+    # TODO(epic1): restart: on-failure:3 retries the full alembic+seed+uvicorn chain on failure.
+    # Once real migrations land, ensure all migrations execute within explicit transactions so that partial
+    # failures do not leave the database in an inconsistent state prior to container retry restarts.
+    # (Alembic is idempotent for already-applied revisions when migrations are transactional).
+    restart: "on-failure:3"
+    volumes:
+      - ./src:/app/src
+      - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to route to containerized Postgres service hostname ('db')
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-savings_user}:${POSTGRES_PASSWORD:-savings_dev_password}@db:5432/${POSTGRES_DB:-savings_dev}
+      - DATABASE_SSL=${DATABASE_SSL:-False}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m src.db.seed &&
+             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:
+
