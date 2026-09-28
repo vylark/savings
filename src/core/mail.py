@@ -42,7 +42,9 @@ async def send_transactional_email(
         }
         outbox.append(email_data)
         logger.info(
-            f"Email send suppressed (SUPPRESS_SEND=True or SMTP unconfigured). Target: {recipient_email}, Subject: {subject}"
+            "Email send suppressed (SUPPRESS_SEND=True or SMTP unconfigured). Target: %s, Subject: %s",
+            recipient_email,
+            subject,
         )
         return
 
