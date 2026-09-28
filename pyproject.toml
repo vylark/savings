@@ -40,4 +40,4 @@ asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--strict-markers --cov=src --cov-report=term-missing"
-filterwarnings = ["ignore:deprecated:DeprecationWarning:zxcvbn.*"]
+filterwarnings = ["ignore::DeprecationWarning:zxcvbn.*"]
