@@ -1,5 +1,7 @@
 """Integration tests for application endpoints including authentication and user management."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -19,7 +21,7 @@ async def test_user_registration_success(client: AsyncClient) -> None:
     """Verify successful registration of a new user with custom fields."""
     register_payload = {
         "email": "user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Jane",
         "last_name": "Doe",
         "tax_band": TaxBand.HIGHER.value,
@@ -35,11 +37,68 @@ async def test_user_registration_success(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_registration_duplicate_email_returns_400(client: AsyncClient) -> None:
+    """Verify that attempting to register with an existing email returns HTTP 400."""
+    unique_email = f"duplicate-{uuid.uuid4()}@example.com"
+    register_payload = {
+        "email": unique_email,
+        "password": "SavingsPlatform2026!XyZ#9",
+        "first_name": "Alice",
+        "last_name": "Smith",
+        "tax_band": TaxBand.BASIC.value,
+    }
+    res1 = await client.post("/auth/register", json=register_payload)
+    assert res1.status_code == 201
+
+    res2 = await client.post("/auth/register", json=register_payload)
+    assert res2.status_code == 400
+    assert "REGISTER_USER_ALREADY_EXISTS" in str(res2.json())
+
+
+@pytest.mark.asyncio
+async def test_user_registration_weak_password_returns_400(client: AsyncClient) -> None:
+    """Verify that user registration with a weak/dictionary password returns HTTP 400."""
+    weak_payload = {
+        "email": "weakpass@example.com",
+        "password": "password123456",
+        "first_name": "Weak",
+        "last_name": "User",
+        "tax_band": TaxBand.BASIC.value,
+    }
+    response = await client.post("/auth/register", json=weak_payload)
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_user_registration_missing_required_fields_returns_422(client: AsyncClient) -> None:
+    """Verify that user registration missing required fields returns HTTP 422."""
+    incomplete_payload = {
+        "email": "incomplete@example.com",
+        "password": "SavingsPlatform2026!XyZ#9",
+    }
+    response = await client.post("/auth/register", json=incomplete_payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_user_registration_invalid_email_returns_422(client: AsyncClient) -> None:
+    """Verify that user registration with a malformed email address returns HTTP 422."""
+    invalid_email_payload = {
+        "email": "not-an-email",
+        "password": "SavingsPlatform2026!XyZ#9",
+        "first_name": "Jane",
+        "last_name": "Doe",
+    }
+    response = await client.post("/auth/register", json=invalid_email_payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_user_registration_invalid_tax_band_returns_422(client: AsyncClient) -> None:
     """Verify that user registration with an invalid tax band returns a 422 Unprocessable Entity error."""
     invalid_reg_payload = {
         "email": "user2@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "John",
         "last_name": "Smith",
         "tax_band": "invalid_band",
@@ -58,10 +117,9 @@ async def test_users_me_unauthenticated_returns_401(client: AsyncClient) -> None
 @pytest.mark.asyncio
 async def test_jwt_login_success(client: AsyncClient) -> None:
     """Verify that valid user credentials yield a JWT bearer access token."""
-    # Inline registration setup -- this test specifically exercises the login request flow and response payload.
     register_payload = {
         "email": "user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Jane",
         "last_name": "Doe",
         "tax_band": TaxBand.HIGHER.value,
@@ -70,7 +128,7 @@ async def test_jwt_login_success(client: AsyncClient) -> None:
 
     login_data = {
         "username": "user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
     }
     login_response = await client.post(
         "/auth/jwt/login",

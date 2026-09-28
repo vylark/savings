@@ -1,0 +1,10 @@
+{
+  "ruff-autoformat": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "./scripts/run_ruff.sh"
+      }
+    ]
+  }
+}

@@ -11,7 +11,7 @@ async def test_registration_dispatches_verification_email(client: httpx.AsyncCli
     """Verifies that user registration dispatches welcome email and verification token into outbox."""
     payload = {
         "email": "verify.user@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Alice",
         "last_name": "Smith",
         "tax_band": "basic",
@@ -36,7 +36,7 @@ async def test_email_verification_flow(client: httpx.AsyncClient) -> None:
     # 1. Register user
     reg_payload = {
         "email": "verify.flow@example.com",
-        "password": "StrongPassword123!",
+        "password": "SavingsPlatform2026!XyZ#9",
         "first_name": "Bob",
         "last_name": "Jones",
         "tax_band": "basic",
@@ -60,7 +60,7 @@ async def test_email_verification_flow(client: httpx.AsyncClient) -> None:
     # 4. Login and verify is_verified field in /users/me
     login_res = await client.post(
         "/auth/jwt/login",
-        data={"username": "verify.flow@example.com", "password": "StrongPassword123!"},
+        data={"username": "verify.flow@example.com", "password": "SavingsPlatform2026!XyZ#9"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert login_res.status_code == 200
