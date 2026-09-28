@@ -4,11 +4,12 @@ Provides endpoints for TOTP secret setup, 2FA activation, code verification, and
 protected action endpoint demonstrating mandatory 2FA enforcement.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.dependencies import get_current_user_from_req, require_totp
+from src.core.limiter import limiter
 from src.core.security import (
     decrypt_secret,
     encrypt_secret,
@@ -61,13 +62,16 @@ router = APIRouter(prefix="/auth/2fa", tags=["Auth 2FA"])
 
 
 @router.post("/setup", response_model=TOTPSetupResponse)
+@limiter.limit("5/minute")
 async def setup_totp(
+    request: Request,
     user: User = Depends(get_current_user_from_req),  # noqa: B008
     session: AsyncSession = Depends(get_db_session),  # noqa: B008
 ) -> TOTPSetupResponse:
     """Generates a new TOTP secret key, saves encrypted secret in database, and returns QR code payload.
 
     Args:
+        request: FastAPI Request object for slowapi rate limiting.
         user: Active authenticated User entity.
         session: Database session dependency.
 
@@ -105,7 +109,9 @@ async def setup_totp(
 
 
 @router.post("/enable", response_model=TOTPMessageResponse)
+@limiter.limit("5/minute")
 async def enable_totp(
+    request: Request,
     payload: TOTPCodeRequest,
     user: User = Depends(get_current_user_from_req),  # noqa: B008
     session: AsyncSession = Depends(get_db_session),  # noqa: B008
@@ -113,6 +119,7 @@ async def enable_totp(
     """Verifies initial TOTP code and activates 2FA (is_totp_enabled=True) for user account.
 
     Args:
+        request: FastAPI Request object for slowapi rate limiting.
         payload: TOTPCodeRequest payload containing 6-digit OTP code.
         user: Active authenticated User entity.
         session: Database session dependency.
@@ -147,13 +154,16 @@ async def enable_totp(
 
 
 @router.post("/verify", response_model=TOTPMessageResponse)
+@limiter.limit("5/minute")
 async def verify_totp(
+    request: Request,
     payload: TOTPCodeRequest,
     user: User = Depends(get_current_user_from_req),  # noqa: B008
 ) -> TOTPMessageResponse:
     """Verifies a 6-digit TOTP passcode for active 2FA enabled account.
 
     Args:
+        request: FastAPI Request object for slowapi rate limiting.
         payload: TOTPCodeRequest payload containing 6-digit OTP code.
         user: Active authenticated User entity.
 
