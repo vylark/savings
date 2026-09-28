@@ -114,8 +114,14 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         user_inputs: list[str] = []
         if user is not None:
             email = getattr(user, "email", None)
-            if isinstance(email, str) and email:
-                user_inputs.append(email.split("@")[0])
+            if isinstance(email, str) and email and "@" in email:
+                local_part, _, domain = email.partition("@")
+                if local_part:
+                    user_inputs.append(local_part)
+                # Extract domain SLD (e.g. 'hotmail' from 'john@hotmail.co.uk')
+                domain_parts = domain.split(".")
+                if domain_parts and domain_parts[0]:
+                    user_inputs.append(domain_parts[0])
             first_name = getattr(user, "first_name", None)
             if isinstance(first_name, str) and first_name:
                 user_inputs.append(first_name)
@@ -126,6 +132,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         # NOTE: zxcvbn returns a dict that contains the raw password under the 'password'
         # key. Explicitly delete the result after evaluation to minimise the window in
         # which the plaintext is reachable via a live object reference.
+        # Note: 'password' itself remains in function local scope for the duration of
+        # validate_password (unavoidable in standard CPython without memoryview/ctypes).
         zxcvbn_result = None
         try:
             zxcvbn_result = zxcvbn(password, user_inputs=user_inputs)

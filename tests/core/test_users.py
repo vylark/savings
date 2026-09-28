@@ -109,3 +109,20 @@ async def test_validate_password_user_context_rejection() -> None:
             # Password contains repeated first name which drops entropy
             await manager.validate_password("JohnJohnJohn!", user=user_schema)
         assert "Weak password" in exc_info.value.reason
+
+
+@pytest.mark.asyncio
+async def test_validate_password_email_domain_sld_user_context_rejection() -> None:
+    """Verify zxcvbn entropy check includes email domain SLD in user context."""
+    manager = UserManager(MagicMock())
+    user_schema = UserCreate(
+        email="john@hotmail.co.uk",
+        password="SavingsPlatform2026!XyZ#9",
+        first_name="John",
+        last_name="Smith",
+    )
+    with patch("src.core.users.is_password_pwned", new=AsyncMock(return_value=False)):
+        with pytest.raises(InvalidPasswordException) as exc_info:
+            # Password contains repeated email provider domain SLD ('hotmail')
+            await manager.validate_password("hotmailhotmail!", user=user_schema)
+        assert "Weak password" in exc_info.value.reason

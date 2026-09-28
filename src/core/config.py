@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     PASSWORD_MAX_LENGTH: int = Field(default=128, le=256)
     # HIBP_FAIL_OPEN: Controls whether to allow user registration when HIBP service is down or degraded.
     # - True (default / fail-open): Degraded HIBP service does not block registration.
-    # - False (fail-closed): registration fails with HTTP 400 if HIBP cannot be reached.
+    # - False (fail-closed): Registration fails with HTTP 400 if HIBP cannot be reached.
+    # Set to False in production environments where breach-check availability is strictly required.
     HIBP_FAIL_OPEN: bool = Field(
         default=True,
         description="Allows registration to succeed if HIBP service check is unreachable or degraded.",
