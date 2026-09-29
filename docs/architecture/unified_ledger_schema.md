@@ -1,6 +1,6 @@
 # Unified Ledger Schema Design & Query Performance Specification
 
-This document outlines the architectural foundations, mathematical invariants, database schema design, and query optimization patterns for the Unified Ledger. It serves as the authoritative blueprint for the double-entry accounting engine powering Epic 2 (Physical Accounts Management) and Epic 4 (Transactions & Ledger).
+This document outlines the architectural foundations, mathematical invariants, database schema design, and query optimization patterns for the Unified Ledger. It serves as the authoritative blueprint for the **Unified Allocation Ledger** powering Epic 2 (Physical Accounts Management) and Epic 4 (Transactions & Ledger).
 
 ---
 
@@ -8,12 +8,17 @@ This document outlines the architectural foundations, mathematical invariants, d
 
 The application requires tracking fractional allocations of physical assets (e.g., bank accounts, brokerages) into virtual goals (e.g., Emergency Fund, House Deposit, Wedding) across multiple users.
 
-Rather than maintaining two separate, asynchronous ledgers (one for physical bank accounts and one for virtual envelopes), we implement a **Unified Single-Entry Ledger Model**. Every row in the ledger represents an atomic slice of money that simultaneously binds:
+Rather than maintaining two separate, asynchronous ledgers (one for physical bank accounts and one for virtual envelopes), we implement a **Unified Allocation Ledger Model**. Every row in the ledger represents an atomic slice of money that simultaneously binds:
 1. **Physical Location**: Where the money physically resides (`physical_account_id`).
 2. **Virtual Purpose**: What financial goal or envelope the money is earmarked for (`virtual_account_id`).
 3. **Legal Ownership**: Which user owns or allocated that slice (`user_id`).
 4. **Currency**: Explicit currency code (`currency`) to avoid cross-currency aggregation errors.
 5. **Quantity**: Signed decimal amount (`amount`).
+
+> [!NOTE]
+> **Terminology: Unified Allocation Ledger vs. Classical Double-Entry**
+>
+> This model is a **Unified Allocation (Projected) Ledger**, not a classical double-entry system. In classical double-entry, every transaction generates two symmetric rows (debit + credit) across separate accounts whose net always sums to zero. Here, a **single `LedgerEntry` row** simultaneously records both the physical location and the virtual objective of a money slice — the balance invariant is maintained by the Parity Rule rather than row-level debit/credit symmetry.
 
 ```mermaid
 graph TD
@@ -41,6 +46,11 @@ graph TD
     LE1 -.-> U
     LE1 -.-> C
     LE1 -.-> AMT
+    LE2 -.-> PA
+    LE2 -.-> VA
+    LE2 -.-> U
+    LE2 -.-> C
+    LE2 -.-> AMT
 ```
 
 ### The Parity Rule (Mathematical Invariant)
@@ -62,11 +72,14 @@ $$\sum_{a \in \text{PhysicalAccounts}(C)} \text{Balance}(a) = \sum_{v \in \text{
 
 **Target Module**: `src/models/ledger.py`
 
+> [!NOTE]
+> The `Currency` enum and `CurrencyType` type alias referenced in this specification are **forward declarations**. They will be defined in `src/core/constants.py` as part of **Task 2.1** (Physical Accounts Domain Models). The import below reflects the intended contract, not the current state of the codebase.
+
 ```python
 """Unified Ledger database models module.
 
 Contains the TransactionEvent and LedgerEntry ORM entities representing the immutable
-double-entry accounting ledger.
+unified allocation ledger.
 """
 
 import uuid
@@ -78,7 +91,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Numeric, Stri
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.constants import CurrencyType
+from src.core.constants import CurrencyType  # Defined in Task 2.1 — see src/core/constants.py
 from src.db.base import Base
 
 if TYPE_CHECKING:
@@ -115,6 +128,9 @@ class TransactionEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("transaction_event.id", ondelete="SET NULL"),
         nullable=True,
+        # Semantic: set on the ORIGINAL event to point to the reversing event.
+        # i.e. original_txn.reversed_by_id = reversal_txn.id
+        # The reversal event sets is_reversal=True and contains sign-inverted LedgerEntries.
     )
 
     # Relationships
@@ -198,6 +214,15 @@ class LedgerEntry(Base):
     )
 ```
 
+> [!IMPORTANT]
+> **Deferred Referential Integrity: `virtual_account_id`**
+>
+> `LedgerEntry.virtual_account_id` is enforced as `NOT NULL` at the column level but **has no database-level foreign key constraint**. The `virtual_account` table does not exist until Epic 3, so the FK cannot be added without a forward dependency violation in the migration order.
+>
+> **Risk**: Without a DB-level FK, orphaned `LedgerEntry` records pointing to non-existent virtual accounts are possible if application-layer validation is bypassed.
+>
+> **Interim Guard**: Until the FK is enabled, all service-layer writes to `ledger_entry` MUST validate that `virtual_account_id` references an existing, user-owned virtual account before committing. The full FK constraint (`REFERENCES virtual_account(id) ON DELETE RESTRICT`) will be added via Alembic migration in Task 3.x when the `virtual_account` table is created.
+
 ---
 
 ## 3. Query Patterns & SQL Optimization
@@ -221,17 +246,18 @@ WHERE physical_account_id = :physical_account_id
   AND user_id = :user_id
   AND currency = :currency;
 ```
-*Index Used*: `ix_ledger_physical_user (physical_account_id, user_id)` (Bitmap Index Scan).
+*Index Used*: `ix_ledger_physical_user (physical_account_id, user_id)` (Bitmap Index Scan on index columns; `currency` is applied as a **post-index heap filter** — it is not covered by this index). For higher-cardinality multi-currency accounts, consider extending to a three-column index `(physical_account_id, user_id, currency)` in a future migration.
 
 ### Query 3: Multi-Account Dashboard Aggregation (Batch Load)
 When loading `GET /physical-accounts/`, avoid $N+1$ queries by grouping:
 ```sql
 SELECT 
     physical_account_id,
+    currency,
     COALESCE(SUM(amount), 0.00) AS balance
 FROM ledger_entry
 WHERE physical_account_id = ANY(:account_ids)
-GROUP BY physical_account_id;
+GROUP BY physical_account_id, currency;
 ```
 
 ### Query 4: Unallocated Deficit Freeze Check

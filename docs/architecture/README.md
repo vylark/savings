@@ -6,7 +6,7 @@ This directory contains system architecture specifications, design blueprints, d
 
 | Document | Area | Status | Description |
 | :--- | :--- | :--- | :--- |
-| [Unified Ledger Schema](unified_ledger_schema.md) | Core Ledger / Accounting Engine | **Approved** | Mathematical parity invariant, unified single-entry schema (`TransactionEvent`, `LedgerEntry`), composite index design, sub-10ms query templates, and multi-currency constraints. |
+| [Unified Ledger Schema](unified_ledger_schema.md) | Core Ledger / Accounting Engine | **In Review** | Mathematical parity invariant, unified allocation schema (`TransactionEvent`, `LedgerEntry`), composite index design, sub-10ms query templates, and multi-currency constraints. |
 
 ---
 
