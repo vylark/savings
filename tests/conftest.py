@@ -18,8 +18,10 @@ from src.core.config import settings
 from src.core.constants import TaxBand
 from src.core.limiter import limiter
 from src.core.mail import clear_outbox
+from src.db.seed import seed_institutions
 from src.db.session import get_db_session, get_engine, get_sessionmaker
 from src.main import app
+from src.models.physical_account import Institution
 
 # Test Database Configuration
 TEST_DB_NAME = "savings_test"
@@ -130,6 +132,19 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
             yield session
 
         await transaction.rollback()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def seeded_institutions(db_session: AsyncSession) -> list[Institution]:
+    """Pre-seeds standard financial institutions catalog within the test transaction rollback boundary.
+
+    Args:
+        db_session: Active transaction-wrapped test database session.
+
+    Returns:
+        List of populated Institution ORM entities.
+    """
+    return await seed_institutions(db_session, commit=False)
 
 
 @pytest_asyncio.fixture(scope="function")

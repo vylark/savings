@@ -10,6 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from src.api.physical_account import router as physical_account_router
 from src.api.two_factor import router as two_factor_router
 from src.core.auth import auth_backend
 from src.core.limiter import limiter
@@ -85,6 +86,11 @@ app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix="/users",
     tags=["Users"],
+)
+
+# 7. Register Physical Accounts & Institutions Router
+app.include_router(
+    physical_account_router,
 )
 
 
