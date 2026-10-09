@@ -1,6 +1,7 @@
 """Integration tests for Story 2.1: Create Physical Account and List Institutions endpoints."""
 
 import uuid
+from datetime import date
 
 import httpx
 import pytest
@@ -9,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import AccountRole
 from src.core.mail import outbox
-from src.db.seed import seed_institutions
 from src.models.physical_account import Institution, PhysicalAccountShare
 from src.models.user import User
 
@@ -24,10 +24,11 @@ async def _verify_authenticated_client(client: httpx.AsyncClient, email: str = "
 
 
 @pytest.mark.asyncio
-async def test_list_institutions_and_search(client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+async def test_list_institutions_and_search(
+    client: httpx.AsyncClient,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
     """Verify GET /institutions lists institutions alphabetically and supports substring search."""
-    await seed_institutions(db_session)
-
     # 1. List all institutions
     res = await client.get("/institutions")
     assert res.status_code == 200
@@ -38,8 +39,8 @@ async def test_list_institutions_and_search(client: httpx.AsyncClient, db_sessio
     assert "Barclays" in names
     assert "Scottish Widows" in names
 
-    # 2. Search by case-insensitive substring (also test trailing-slash route)
-    search_res = await client.get("/institutions/?search=widows")
+    # 2. Search by case-insensitive substring
+    search_res = await client.get("/institutions?search=widows")
     assert search_res.status_code == 200
     search_data = search_res.json()
     assert len(search_data) == 1
@@ -51,10 +52,10 @@ async def test_list_institutions_and_search(client: httpx.AsyncClient, db_sessio
 async def test_create_physical_account_success(
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
 ) -> None:
     """Verify POST /physical-accounts creates an account, links Institution, and grants OWNER share."""
     await _verify_authenticated_client(authenticated_client)
-    await seed_institutions(db_session)
 
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
@@ -98,10 +99,10 @@ async def test_create_physical_account_success(
 async def test_create_physical_account_unwrapped_none_and_custom_owner(
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
 ) -> None:
     """Verify creating an unwrapped account (tax_wrapper=NONE) with explicit owner_id."""
     await _verify_authenticated_client(authenticated_client)
-    await seed_institutions(db_session)
 
     monzo = (await db_session.execute(select(Institution).where(Institution.name == "Monzo"))).scalar_one()
 
@@ -125,7 +126,7 @@ async def test_create_physical_account_unwrapped_none_and_custom_owner(
         "access_delay_days": 30,
         "owner_id": str(other_user.id),
     }
-    res = await authenticated_client.post("/physical-accounts/", json=payload)
+    res = await authenticated_client.post("/physical-accounts", json=payload)
     assert res.status_code == 201
     data = res.json()
     assert data["tax_wrapper"] == "NONE"
@@ -178,16 +179,18 @@ async def test_create_physical_account_invalid_institution_returns_404(
         {"interest_rate": "-0.0100"},
         {"interest_rate": "1.5000"},
         {"maturity_date": "not-a-valid-date"},
+        {"maturity_date": "2020-01-01"},
+        {"maturity_date": date.today().isoformat()},
     ],
 )
 async def test_create_physical_account_validation_errors(
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
     invalid_overrides: dict[str, object],
 ) -> None:
     """Verify POST /physical-accounts returns 422 Unprocessable Entity on invalid payload fields."""
     await _verify_authenticated_client(authenticated_client)
-    await seed_institutions(db_session)
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
     base_payload: dict[str, object] = {
@@ -209,9 +212,9 @@ async def test_create_physical_account_security_guards(
     client: httpx.AsyncClient,
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
 ) -> None:
     """Verify unauthenticated caller gets 401 and unverified caller gets 403 Forbidden."""
-    await seed_institutions(db_session)
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
     payload = {
@@ -234,10 +237,10 @@ async def test_create_physical_account_security_guards(
 async def test_create_physical_account_rate_limit(
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
 ) -> None:
     """Verify POST /physical-accounts enforces the 20 requests/minute rate limit."""
     await _verify_authenticated_client(authenticated_client)
-    await seed_institutions(db_session)
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
     for i in range(20):

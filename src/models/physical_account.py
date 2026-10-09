@@ -36,7 +36,6 @@ class Institution(Base):
     Attributes:
         id: Primary key UUID.
         name: Official provider name (Unique).
-        code: Optional machine-readable identifier (e.g., 'BARCLAYS_UK', 'VANGUARD_UK').
         logo_url: Optional asset URI for UI display.
         parent_institution_id: Optional self-referential foreign key linking sub-brands/divisions
             to their parent banking license/group (e.g. First Direct -> HSBC UK Bank plc)

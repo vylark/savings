@@ -13,7 +13,7 @@ Rather than maintaining two separate, asynchronous ledgers (one for physical ban
 2. **Virtual Purpose**: What financial goal or envelope the money is earmarked for (`virtual_account_id`).
 3. **Legal Ownership**: Which user owns or allocated that slice (`user_id`).
 4. **Currency**: Explicit currency code (`currency`) to avoid cross-currency aggregation errors.
-5. **Quantity**: Signed decimal amount (`amount`).
+5. **Quantity**: Signed decimal amount (`amount`; positive = credit / inflow, negative = debit / outflow).
 
 > [!NOTE]
 > **Terminology: Unified Allocation Ledger vs. Classical Double-Entry**

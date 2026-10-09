@@ -80,7 +80,8 @@ class LedgerEntry(Base):
         virtual_account_id: UUID referencing the target VirtualAccount (or unallocated bucket).
         user_id: Foreign key referencing the owning/allocating User.
         currency: ISO currency denomination of the entry.
-        amount: Signed monetary amount (precision 18, scale 2).
+        amount: Signed monetary amount (precision 18, scale 2; positive = credit / inflow,
+            negative = debit / outflow).
         created_at: UTC timestamp when the entry was recorded.
     """
 
@@ -118,7 +119,7 @@ class LedgerEntry(Base):
     amount: Mapped[Decimal] = mapped_column(
         Numeric(precision=18, scale=2),
         nullable=False,
-    )
+    )  # Sign convention: positive = credit / inflow, negative = debit / outflow
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

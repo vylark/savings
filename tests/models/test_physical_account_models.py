@@ -250,7 +250,7 @@ async def test_reconciliation_and_ledger_audit_preservation(db_session: AsyncSes
 
 async def test_seed_institutions_idempotency(db_session: AsyncSession) -> None:
     """Verify seed_institutions populates all initial providers and is idempotent on repeat calls."""
-    first_run = await seed_institutions(db_session)
+    first_run = await seed_institutions(db_session, commit=False)
     assert len(first_run) == len(INITIAL_INSTITUTIONS)
 
     # Check parent-child links for First Direct -> HSBC UK and Scottish Widows -> Lloyds Bank
@@ -261,7 +261,7 @@ async def test_seed_institutions_idempotency(db_session: AsyncSession) -> None:
     assert by_name["First Direct"].parent_institution_id == by_name["HSBC UK"].id
 
     # Second run should not duplicate rows
-    second_run = await seed_institutions(db_session)
+    second_run = await seed_institutions(db_session, commit=False)
     assert len(second_run) == len(INITIAL_INSTITUTIONS)
 
 

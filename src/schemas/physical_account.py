@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core.constants import AccountRoleType, CurrencyType, TaxWrapperType
 
@@ -39,6 +39,8 @@ class PhysicalAccountCreate(BaseModel):
         access_delay_days: Notice period or withdrawal delay in business days (0 to 365).
         maturity_date: Optional fixed-term maturity date for fixed rate bonds/ISAs.
         owner_id: Optional explicit owner UUID (defaults to authenticated caller).
+            Security Note / TODO: Arbitrary cross-user attribution is permitted for Story 2.1 MVP
+            but must be hardened (e.g., admin-only or target user consent) in future stories.
     """
 
     name: str = Field(..., min_length=1, max_length=100, description="User-assigned account name")
@@ -63,8 +65,31 @@ class PhysicalAccountCreate(BaseModel):
     )
     owner_id: uuid.UUID | None = Field(
         default=None,
-        description="Optional explicit owner UUID (defaults to authenticated caller)",
+        description=(
+            "Optional explicit owner UUID (defaults to authenticated caller). "
+            "TODO: Security hardening required - assigning arbitrary third-party owners "
+            "is permitted in Story 2.1 MVP but requires admin authorization or target user consent "
+            "in future stories."
+        ),
     )
+
+    @field_validator("maturity_date")
+    @classmethod
+    def validate_maturity_date_in_future(cls, value: date | None) -> date | None:
+        """Validates that maturity_date, if specified, is strictly in the future.
+
+        Args:
+            value: Date supplied in request payload.
+
+        Raises:
+            ValueError: If maturity date is today or in the past.
+
+        Returns:
+            Validated date or None.
+        """
+        if value is not None and value <= date.today():
+            raise ValueError("Maturity date must be in the future.")
+        return value
 
 
 class PhysicalAccountRead(BaseModel):

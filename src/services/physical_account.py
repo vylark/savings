@@ -69,6 +69,8 @@ class PhysicalAccountService:
 
         effective_owner_id = owner_id or user.id
         if effective_owner_id != user.id:
+            # TODO: Security hardening required - verify caller is authorized (e.g., admin role or
+            # target user consent) to assign ownership to an arbitrary third party. Permitted for Story 2.1 MVP.
             target_owner = await db.get(User, effective_owner_id)
             if not target_owner:
                 raise HTTPException(
@@ -95,6 +97,14 @@ class PhysicalAccountService:
             role=AccountRole.OWNER,
         )
         db.add(share)
+
+        # Deterministically initialize/ensure unallocated bucket to guarantee immediate ledger compatibility
+        await PhysicalAccountService.ensure_unallocated_bucket(
+            db=db,
+            user_id=effective_owner_id,
+            currency=account.currency,
+        )
+
         await db.commit()
 
         # Reload with institution relationship populated
@@ -114,6 +124,9 @@ class PhysicalAccountService:
     ) -> Decimal:
         """Calculates dynamic balance from ledger entries respecting user role privacy.
 
+        Guards against cross-currency rollups by filtering ledger entries to match
+        the physical account's designated base currency.
+
         Args:
             db: Database session.
             account_id: Target physical account.
@@ -123,8 +136,13 @@ class PhysicalAccountService:
         Returns:
             Computed balance as a Decimal.
         """
-        query = select(func.coalesce(func.sum(LedgerEntry.amount), Decimal("0.00"))).where(
-            LedgerEntry.physical_account_id == account_id
+        query = (
+            select(func.coalesce(func.sum(LedgerEntry.amount), Decimal("0.00")))
+            .join(PhysicalAccount, LedgerEntry.physical_account_id == PhysicalAccount.id)
+            .where(
+                LedgerEntry.physical_account_id == account_id,
+                LedgerEntry.currency == PhysicalAccount.currency,
+            )
         )
 
         # Restrict sum to caller's slices if user is merely an ALLOCATOR
@@ -142,7 +160,8 @@ class PhysicalAccountService:
     ) -> uuid.UUID:
         """Provisions or retrieves the system-managed Unallocated virtual account for a user.
 
-        Used during reconciliation and deposits as the default balancing virtual bucket.
+        Invoked eagerly during physical account creation and on-demand during reconciliation
+        and deposits as the default balancing virtual bucket.
 
         Args:
             db: Database session.

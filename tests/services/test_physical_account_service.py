@@ -187,6 +187,28 @@ async def test_get_account_balance_privacy_filter(db_session: AsyncSession) -> N
     )
     assert allocator_bal == Decimal("500.00")
 
+    # Defense-in-depth: Insert an entry with mismatched currency (USD instead of GBP)
+    db_session.add(
+        LedgerEntry(
+            transaction_id=tx.id,
+            physical_account_id=account.id,
+            virtual_account_id=uuid.uuid4(),
+            user_id=user_a.id,
+            currency=Currency.USD,
+            amount=Decimal("9999.00"),
+        )
+    )
+    await db_session.flush()
+
+    # Owner balance still strictly reflects only matching GBP entries (£10,500.00)
+    owner_bal_after_mismatch = await PhysicalAccountService.get_account_balance(
+        db=db_session,
+        account_id=account.id,
+        role=AccountRole.OWNER,
+        user_id=user_a.id,
+    )
+    assert owner_bal_after_mismatch == Decimal("10500.00")
+
 
 async def test_ensure_unallocated_bucket_deterministic_uuid(db_session: AsyncSession) -> None:
     """Verify ensure_unallocated_bucket generates deterministic per-user, per-currency UUIDs."""
@@ -232,6 +254,12 @@ async def test_service_list_institutions_and_create_account(db_session: AsyncSes
     )
     assert created.name == "Direct Service Account"
     assert created.institution.id == inst.id
+
+    # Verify unallocated bucket for the owner was deterministically initialized
+    expected_bucket = await PhysicalAccountService.ensure_unallocated_bucket(
+        db_session, other_user.id, Currency(created.currency)
+    )
+    assert expected_bucket == uuid.uuid5(other_user.id, f"unallocated_{created.currency.value}")
 
     # Missing institution raises 404
     bad_inst_payload = PhysicalAccountCreate(

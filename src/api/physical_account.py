@@ -24,11 +24,6 @@ router = APIRouter(tags=["Physical Accounts & Institutions"])
     response_model=list[InstitutionRead],
     summary="List available financial institutions",
 )
-@router.get(
-    "/institutions/",
-    response_model=list[InstitutionRead],
-    include_in_schema=False,
-)
 @limiter.limit("60/minute")
 async def list_institutions(
     request: Request,  # noqa: ARG001
@@ -54,12 +49,6 @@ async def list_institutions(
     response_model=PhysicalAccountRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new physical account",
-)
-@router.post(
-    "/physical-accounts/",
-    response_model=PhysicalAccountRead,
-    status_code=status.HTTP_201_CREATED,
-    include_in_schema=False,
 )
 @limiter.limit("20/minute")
 async def create_physical_account(

@@ -28,7 +28,7 @@ class SeedError(Exception):
     """Custom exception raised when database seeding fails."""
 
 
-async def seed_institutions(session: AsyncSession) -> list[Institution]:
+async def seed_institutions(session: AsyncSession, commit: bool = True) -> list[Institution]:
     """Idempotently populates the financial institutions catalog with standard providers.
 
     Inserts root institutions first, then links subsidiary brands (e.g., First Direct -> HSBC UK,
@@ -36,6 +36,8 @@ async def seed_institutions(session: AsyncSession) -> list[Institution]:
 
     Args:
         session: Active asynchronous SQLAlchemy database session.
+        commit: Whether to commit the transaction. Defaults to True for scripts/migrations;
+            set to False in transactional test fixtures to preserve rollback boundaries.
 
     Returns:
         List of all Institution entities present in the catalog after seeding.
@@ -66,7 +68,10 @@ async def seed_institutions(session: AsyncSession) -> list[Institution]:
             session.add(inst)
             existing_by_name[name] = inst
 
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return list(existing_by_name.values())
 
 
