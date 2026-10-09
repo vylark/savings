@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from src.core.constants import AccountRoleType, CurrencyType, TaxWrapperType
 
@@ -136,3 +136,42 @@ class PhysicalAccountListResponse(BaseModel):
 
     items: list[PhysicalAccountRead]
     total_count: int
+
+
+class PhysicalAccountShareCreate(BaseModel):
+    """Payload to grant or update sharing permissions on an account.
+
+    Attributes:
+        email: Email address of the registered and verified user to invite.
+        role: Assigned role: must be CO_OWNER or ALLOCATOR.
+    """
+
+    email: EmailStr = Field(..., description="Email address of the registered user to invite")
+    role: AccountRoleType = Field(
+        ...,
+        description="Assigned role: must be CO_OWNER or ALLOCATOR",
+    )
+
+
+class PhysicalAccountShareRead(BaseModel):
+    """Response schema detailing an active account collaborator.
+
+    Attributes:
+        id: Primary key UUID of the share record.
+        user_id: UUID of the collaborator user.
+        email: Email address of the collaborator.
+        first_name: Given name of the collaborator.
+        last_name: Surname of the collaborator.
+        role: Assigned AccountRoleType.
+        created_at: Timestamp when permission was established.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    email: EmailStr
+    first_name: str
+    last_name: str
+    role: AccountRoleType
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

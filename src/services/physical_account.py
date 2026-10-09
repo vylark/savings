@@ -17,6 +17,7 @@ from src.schemas.physical_account import (
     InstitutionRead,
     PhysicalAccountCreate,
     PhysicalAccountRead,
+    PhysicalAccountShareCreate,
 )
 
 
@@ -313,3 +314,143 @@ class PhysicalAccountService:
         """
         unallocated_namespace = uuid.uuid5(user_id, f"unallocated_{currency.value}")
         return unallocated_namespace
+
+    @staticmethod
+    async def share_account(
+        db: AsyncSession,
+        account: PhysicalAccount,
+        owner_share: PhysicalAccountShare,
+        data: PhysicalAccountShareCreate,
+    ) -> tuple[PhysicalAccountShare, User]:
+        """Grants or updates sharing permissions for a collaborator on a physical account.
+
+        Args:
+            db: Active asynchronous database session.
+            account: Target PhysicalAccount instance.
+            owner_share: Caller's verified OWNER share record.
+            data: Collaborator invitation payload containing email and target role.
+
+        Raises:
+            HTTPException: 400 if attempting to assign OWNER role or share with oneself,
+                or if target user is not verified.
+            HTTPException: 404 if target user is not found.
+
+        Returns:
+            Tuple of (PhysicalAccountShare, User) representing the active collaborator share.
+        """
+        if data.role == "OWNER":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot assign OWNER role via share endpoint.",
+            )
+
+        stmt = select(User).where(User.__table__.c.email == data.email)
+        target_user = (await db.execute(stmt)).scalar_one_or_none()
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with email '{data.email}' not found.",
+            )
+
+        if not target_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Target user email is not verified.",
+            )
+
+        if target_user.id == owner_share.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot share account with yourself.",
+            )
+
+        share_stmt = select(PhysicalAccountShare).where(
+            PhysicalAccountShare.physical_account_id == account.id,
+            PhysicalAccountShare.user_id == target_user.id,
+        )
+        existing_share = (await db.execute(share_stmt)).scalar_one_or_none()
+
+        if existing_share:
+            existing_share.role = AccountRole(data.role)
+            share = existing_share
+        else:
+            share = PhysicalAccountShare(
+                physical_account_id=account.id,
+                user_id=target_user.id,
+                role=AccountRole(data.role),
+            )
+            db.add(share)
+
+        # Ensure unallocated virtual bucket exists for grantee in account's currency
+        await PhysicalAccountService.ensure_unallocated_bucket(
+            db=db,
+            user_id=target_user.id,
+            currency=account.currency,
+        )
+
+        await db.commit()
+        await db.refresh(share)
+
+        return share, target_user
+
+    @staticmethod
+    async def list_account_shares(
+        db: AsyncSession,
+        account_id: uuid.UUID,
+    ) -> Sequence[Row[tuple[PhysicalAccountShare, User]]]:
+        """Lists all collaborator shares and associated user profiles for an account.
+
+        Args:
+            db: Active asynchronous database session.
+            account_id: Physical account UUID.
+
+        Returns:
+            Sequence of (PhysicalAccountShare, User) database rows.
+        """
+        stmt = (
+            select(PhysicalAccountShare, User)
+            .join(User, PhysicalAccountShare.user_id == User.id)
+            .where(PhysicalAccountShare.physical_account_id == account_id)
+            .order_by(PhysicalAccountShare.created_at.asc())
+        )
+        records = (await db.execute(stmt)).all()
+        return records
+
+    @staticmethod
+    async def revoke_account_share(
+        db: AsyncSession,
+        account_id: uuid.UUID,
+        owner_user_id: uuid.UUID,
+        target_user_id: uuid.UUID,
+    ) -> None:
+        """Revokes a collaborator's access to a physical account.
+
+        Args:
+            db: Active asynchronous database session.
+            account_id: Physical account UUID.
+            owner_user_id: Caller's user UUID (must be primary owner).
+            target_user_id: Collaborator user UUID to revoke.
+
+        Raises:
+            HTTPException: 400 if owner attempts to revoke their own primary ownership.
+            HTTPException: 404 if collaborator share is not found on this account.
+        """
+        if target_user_id == owner_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot revoke primary ownership of account.",
+            )
+
+        stmt = select(PhysicalAccountShare).where(
+            PhysicalAccountShare.physical_account_id == account_id,
+            PhysicalAccountShare.user_id == target_user_id,
+        )
+        share = (await db.execute(stmt)).scalar_one_or_none()
+        if not share:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target user share not found on this account.",
+            )
+
+        await db.delete(share)
+        await db.commit()

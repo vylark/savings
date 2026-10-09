@@ -553,3 +553,426 @@ async def test_list_physical_accounts_rate_limit(
     # 61st request triggers HTTP 429 Too Many Requests
     exceeded_res = await authenticated_client.get("/physical-accounts")
     assert exceeded_res.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_share_physical_account_grant_success_and_visibility(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC1: Owner grants ALLOCATOR to User B by email; User B immediately sees account in GET /physical-accounts/."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    user_b_client = await _create_authenticated_user_client(
+        email="user_b@example.com",
+        first_name="Bob",
+        last_name="Collaborator",
+    )
+
+    # 1. Owner creates account
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+    create_res = await authenticated_client.post(
+        "/physical-accounts",
+        json={
+            "name": "Family Vault",
+            "institution_id": str(barclays.id),
+            "tax_wrapper": "ISA",
+            "currency": "GBP",
+        },
+    )
+    assert create_res.status_code == 201
+    account_id = create_res.json()["id"]
+
+    # User B initially does NOT see the account
+    user_b_list_before = await user_b_client.get("/physical-accounts")
+    assert user_b_list_before.status_code == 200
+    assert not any(item["id"] == account_id for item in user_b_list_before.json()["items"])
+
+    # 2. Owner grants ALLOCATOR role to User B
+    share_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "user_b@example.com", "role": "ALLOCATOR"},
+    )
+    assert share_res.status_code == 201
+    share_data = share_res.json()
+    assert share_data["email"] == "user_b@example.com"
+    assert share_data["first_name"] == "Bob"
+    assert share_data["last_name"] == "Collaborator"
+    assert share_data["role"] == "ALLOCATOR"
+    assert "id" in share_data
+    assert "created_at" in share_data
+
+    # 3. User B immediately sees the account in GET /physical-accounts/
+    user_b_list_after = await user_b_client.get("/physical-accounts")
+    assert user_b_list_after.status_code == 200
+    matching = [item for item in user_b_list_after.json()["items"] if item["id"] == account_id]
+    assert len(matching) == 1
+    assert matching[0]["name"] == "Family Vault"
+    assert matching[0]["role"] == "ALLOCATOR"
+    assert matching[0]["balance"] == "0.00"
+
+    await user_b_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_share_physical_account_role_upgrade_and_downgrade(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC3: Subsequent share requests update collaborator role cleanly and affect balance visibility."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    collab_client = await _create_authenticated_user_client(email="collab_upgrade@example.com")
+
+    # Seed accounts and ledger
+    owner, collab, account_a, _ = await _seed_test_accounts_and_ledger(
+        db_session,
+        owner_email="user@example.com",
+        allocator_email="collab_upgrade@example.com",
+    )
+
+    # Collab is currently ALLOCATOR; sees strictly own slice £500.00
+    get_res = await collab_client.get(f"/physical-accounts/{account_a.id}")
+    assert get_res.status_code == 200
+    assert get_res.json()["balance"] == "500.00"
+    assert get_res.json()["role"] == "ALLOCATOR"
+
+    # Owner upgrades Collab to CO_OWNER
+    upgrade_res = await authenticated_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "collab_upgrade@example.com", "role": "CO_OWNER"},
+    )
+    assert upgrade_res.status_code == 201
+    assert upgrade_res.json()["role"] == "CO_OWNER"
+
+    # Collab now sees total balance £1500.00
+    get_upgraded = await collab_client.get(f"/physical-accounts/{account_a.id}")
+    assert get_upgraded.status_code == 200
+    assert get_upgraded.json()["balance"] == "1500.00"
+    assert get_upgraded.json()["role"] == "CO_OWNER"
+
+    # Owner downgrades Collab back to ALLOCATOR
+    downgrade_res = await authenticated_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "collab_upgrade@example.com", "role": "ALLOCATOR"},
+    )
+    assert downgrade_res.status_code == 201
+    assert downgrade_res.json()["role"] == "ALLOCATOR"
+
+    # Collab now sees only £500.00 again
+    get_downgraded = await collab_client.get(f"/physical-accounts/{account_a.id}")
+    assert get_downgraded.status_code == 200
+    assert get_downgraded.json()["balance"] == "500.00"
+    assert get_downgraded.json()["role"] == "ALLOCATOR"
+
+    await collab_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_share_physical_account_forbidden_for_allocator_and_co_owner(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC2: Non-owners (ALLOCATOR and CO_OWNER) receive 403 Forbidden when calling POST /shares."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    collab_client = await _create_authenticated_user_client(email="collab_forbidden@example.com")
+    outsider_client = await _create_authenticated_user_client(email="outsider@example.com")
+
+    _, _, account_a, _ = await _seed_test_accounts_and_ledger(
+        db_session,
+        owner_email="user@example.com",
+        allocator_email="collab_forbidden@example.com",
+    )
+
+    # 1. ALLOCATOR calling POST /shares receives 403
+    allocator_post = await collab_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "outsider@example.com", "role": "ALLOCATOR"},
+    )
+    assert allocator_post.status_code == 403
+
+    # Upgrade to CO_OWNER
+    await authenticated_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "collab_forbidden@example.com", "role": "CO_OWNER"},
+    )
+
+    # 2. CO_OWNER calling POST /shares also receives 403
+    co_owner_post = await collab_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "outsider@example.com", "role": "ALLOCATOR"},
+    )
+    assert co_owner_post.status_code == 403
+
+    # 3. Outsider (non-member) receives 404
+    outsider_post = await outsider_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "user@example.com", "role": "ALLOCATOR"},
+    )
+    assert outsider_post.status_code == 404
+
+    await collab_client.aclose()
+    await outsider_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_share_physical_account_validation_guards(
+    authenticated_client: httpx.AsyncClient,
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC4 (self-sharing), AC5 (OWNER role), AC6 (non-existent email), and unverified email guards."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+
+    # Register an unverified user
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "unverified_target@example.com",
+            "password": "SavingsPlatform2026!XyZ#9",
+            "first_name": "Unverified",
+            "last_name": "User",
+            "tax_band": TaxBand.BASIC.value,
+        },
+    )
+
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+    create_res = await authenticated_client.post(
+        "/physical-accounts",
+        json={
+            "name": "Guarded Vault",
+            "institution_id": str(barclays.id),
+            "tax_wrapper": "NONE",
+            "currency": "GBP",
+        },
+    )
+    account_id = create_res.json()["id"]
+
+    # 1. AC4: Self-sharing guard returns 400 Bad Request
+    self_share_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "user@example.com", "role": "ALLOCATOR"},
+    )
+    assert self_share_res.status_code == 400
+    assert "yourself" in self_share_res.json()["detail"]
+
+    # 2. Cannot assign OWNER role via share endpoint returns 400 Bad Request
+    owner_role_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "user@example.com", "role": "OWNER"},
+    )
+    assert owner_role_res.status_code == 400
+    assert "Cannot assign OWNER role" in owner_role_res.json()["detail"]
+
+    # 3. AC6: Sharing with non-existent email returns 404 Not Found
+    non_existent_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "ghost_collaborator@example.com", "role": "ALLOCATOR"},
+    )
+    assert non_existent_res.status_code == 404
+    assert "not found" in non_existent_res.json()["detail"]
+
+    # 4. Sharing with unverified email returns 400 Bad Request
+    unverified_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "unverified_target@example.com", "role": "ALLOCATOR"},
+    )
+    assert unverified_res.status_code == 400
+    assert "not verified" in unverified_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_share_physical_account_rate_limit(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify POST /physical-accounts/{id}/shares enforces 30 requests/minute rate limit."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    collab_client = await _create_authenticated_user_client(email="rate_limit_collab@example.com")
+
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+    create_res = await authenticated_client.post(
+        "/physical-accounts",
+        json={
+            "name": "Rate Limited Share Account",
+            "institution_id": str(barclays.id),
+            "tax_wrapper": "NONE",
+            "currency": "GBP",
+        },
+    )
+    account_id = create_res.json()["id"]
+
+    for _ in range(30):
+        res = await authenticated_client.post(
+            f"/physical-accounts/{account_id}/shares",
+            json={"email": "rate_limit_collab@example.com", "role": "ALLOCATOR"},
+        )
+        assert res.status_code == 201
+
+    # 31st request triggers 429
+    exceeded_res = await authenticated_client.post(
+        f"/physical-accounts/{account_id}/shares",
+        json={"email": "rate_limit_collab@example.com", "role": "ALLOCATOR"},
+    )
+    assert exceeded_res.status_code == 429
+
+    await collab_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_account_shares_permissions_and_response(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify GET /physical-accounts/{id}/shares permissions (OWNER/CO_OWNER allowed, ALLOCATOR 403, outsider 404)."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    collab_client = await _create_authenticated_user_client(email="list_collab@example.com")
+    outsider_client = await _create_authenticated_user_client(email="list_outsider@example.com")
+
+    owner, collab, account_a, _ = await _seed_test_accounts_and_ledger(
+        db_session,
+        owner_email="user@example.com",
+        allocator_email="list_collab@example.com",
+    )
+
+    # 1. Owner can list shares
+    owner_list = await authenticated_client.get(f"/physical-accounts/{account_a.id}/shares")
+    assert owner_list.status_code == 200
+    shares_data = owner_list.json()
+    assert len(shares_data) == 2
+    emails = [s["email"] for s in shares_data]
+    assert "user@example.com" in emails
+    assert "list_collab@example.com" in emails
+
+    # 2. Allocator receives 403 Forbidden
+    allocator_list = await collab_client.get(f"/physical-accounts/{account_a.id}/shares")
+    assert allocator_list.status_code == 403
+
+    # Upgrade collaborator to CO_OWNER
+    await authenticated_client.post(
+        f"/physical-accounts/{account_a.id}/shares",
+        json={"email": "list_collab@example.com", "role": "CO_OWNER"},
+    )
+
+    # 3. Co-Owner can list shares
+    co_owner_list = await collab_client.get(f"/physical-accounts/{account_a.id}/shares")
+    assert co_owner_list.status_code == 200
+    assert len(co_owner_list.json()) == 2
+
+    # 4. Outsider receives 404 Not Found
+    outsider_list = await outsider_client.get(f"/physical-accounts/{account_a.id}/shares")
+    assert outsider_list.status_code == 404
+
+    await collab_client.aclose()
+    await outsider_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_account_shares_rate_limit(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify GET /physical-accounts/{id}/shares enforces 60 requests/minute rate limit."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+
+    create_res = await authenticated_client.post(
+        "/physical-accounts",
+        json={
+            "name": "Rate Limited List Shares Account",
+            "institution_id": str(barclays.id),
+            "tax_wrapper": "NONE",
+            "currency": "GBP",
+        },
+    )
+    account_id = create_res.json()["id"]
+
+    for _ in range(60):
+        res = await authenticated_client.get(f"/physical-accounts/{account_id}/shares")
+        assert res.status_code == 200
+
+    # 61st request triggers 429
+    exceeded_res = await authenticated_client.get(f"/physical-accounts/{account_id}/shares")
+    assert exceeded_res.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_revoke_account_share_success_and_guardrails(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC5 (sole owner protection), revocation success (204), and post-revocation access termination."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    collab_client = await _create_authenticated_user_client(email="collab_revoke@example.com")
+
+    owner, collab, account_a, _ = await _seed_test_accounts_and_ledger(
+        db_session,
+        owner_email="user@example.com",
+        allocator_email="collab_revoke@example.com",
+    )
+
+    # 1. AC5: Owner cannot revoke primary ownership (400 Bad Request)
+    self_del = await authenticated_client.delete(f"/physical-accounts/{account_a.id}/shares/{owner.id}")
+    assert self_del.status_code == 400
+    assert "primary ownership" in self_del.json()["detail"]
+
+    # 2. Allocator attempts to revoke access -> 403 Forbidden
+    allocator_del = await collab_client.delete(f"/physical-accounts/{account_a.id}/shares/{owner.id}")
+    assert allocator_del.status_code == 403
+
+    # 3. Owner revokes non-existent share -> 404 Not Found
+    random_del = await authenticated_client.delete(f"/physical-accounts/{account_a.id}/shares/{uuid.uuid4()}")
+    assert random_del.status_code == 404
+    assert "not found" in random_del.json()["detail"]
+
+    # 4. Successful revocation -> 204 No Content
+    success_del = await authenticated_client.delete(f"/physical-accounts/{account_a.id}/shares/{collab.id}")
+    assert success_del.status_code == 204
+
+    # 5. Collaborator can no longer see the account
+    get_res = await collab_client.get(f"/physical-accounts/{account_a.id}")
+    assert get_res.status_code == 404
+
+    list_res = await collab_client.get("/physical-accounts")
+    assert list_res.status_code == 200
+    assert not any(item["id"] == str(account_a.id) for item in list_res.json()["items"])
+
+    await collab_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_revoke_account_share_rate_limit(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify DELETE /physical-accounts/{id}/shares/{target_id} enforces 30 requests/minute rate limit."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+
+    create_res = await authenticated_client.post(
+        "/physical-accounts",
+        json={
+            "name": "Rate Limited Revoke Account",
+            "institution_id": str(barclays.id),
+            "tax_wrapper": "NONE",
+            "currency": "GBP",
+        },
+    )
+    account_id = create_res.json()["id"]
+
+    target_uuid = uuid.uuid4()
+    for _ in range(30):
+        res = await authenticated_client.delete(f"/physical-accounts/{account_id}/shares/{target_uuid}")
+        # Will return 404 because random target ID doesn't exist, but still counts toward rate limiter
+        assert res.status_code == 404
+
+    # 31st request triggers 429
+    exceeded_res = await authenticated_client.delete(f"/physical-accounts/{account_id}/shares/{target_uuid}")
+    assert exceeded_res.status_code == 429
