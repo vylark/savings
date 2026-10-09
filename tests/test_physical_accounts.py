@@ -311,8 +311,10 @@ async def _seed_test_accounts_and_ledger(
     allocator_email: str = "allocator@example.com",
 ) -> tuple[User, User, PhysicalAccount, PhysicalAccount]:
     """Helper to seed standard two-account scenario with owner and allocator shares."""
-    owner = (await db_session.execute(select(User).where(User.email == owner_email))).scalars().one()
-    allocator = (await db_session.execute(select(User).where(User.email == allocator_email))).scalars().one()
+    owner = (await db_session.execute(select(User).where(User.__table__.c.email == owner_email))).scalars().one()
+    allocator = (
+        (await db_session.execute(select(User).where(User.__table__.c.email == allocator_email))).scalars().one()
+    )
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
     account_a = PhysicalAccount(
