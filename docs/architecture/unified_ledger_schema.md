@@ -35,7 +35,7 @@ graph TD
         PA["Physical Account<br/>Where it lives"]
         VA["Virtual Account<br/>What it is for"]
         U["User<br/>Who owns it"]
-        C["Currency<br/>GBP / USD / EUR"]
+        C["Currency<br/>GBP / USD / EUR / PHP"]
         AMT["Amount<br/>+/- Numeric"]
     end
 
