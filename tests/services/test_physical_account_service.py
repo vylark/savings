@@ -378,14 +378,14 @@ async def test_service_share_account_validation_errors(db_session: AsyncSession)
     assert exc_info.value.status_code == 400
     assert "yourself" in exc_info.value.detail
 
-    # 4. Cannot assign OWNER role returns 400
+    # 4. Cannot assign OWNER role returns 400 (defense-in-depth service check)
     collaborator = await _make_user(db_session, "collab.val.service@example.com")
     with pytest.raises(HTTPException) as exc_info:
         await PhysicalAccountService.share_account(
             db=db_session,
             account=account,
             owner_share=owner_share,
-            data=PhysicalAccountShareCreate(email=collaborator.email, role="OWNER"),
+            data=PhysicalAccountShareCreate.model_construct(email=collaborator.email, role="OWNER"),
         )
     assert exc_info.value.status_code == 400
     assert "Cannot assign OWNER role" in exc_info.value.detail

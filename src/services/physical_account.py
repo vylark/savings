@@ -338,7 +338,7 @@ class PhysicalAccountService:
         Returns:
             Tuple of (PhysicalAccountShare, User) representing the active collaborator share.
         """
-        if data.role == "OWNER":
+        if str(data.role) == "OWNER":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot assign OWNER role via share endpoint.",
@@ -381,12 +381,12 @@ class PhysicalAccountService:
             )
             db.add(share)
 
-        # Ensure unallocated virtual bucket exists for grantee in account's currency
-        await PhysicalAccountService.ensure_unallocated_bucket(
-            db=db,
-            user_id=target_user.id,
-            currency=account.currency,
-        )
+            # Ensure unallocated virtual bucket exists for grantee in account's currency
+            await PhysicalAccountService.ensure_unallocated_bucket(
+                db=db,
+                user_id=target_user.id,
+                currency=account.currency,
+            )
 
         await db.commit()
         await db.refresh(share)

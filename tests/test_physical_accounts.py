@@ -758,13 +758,12 @@ async def test_share_physical_account_validation_guards(
     assert self_share_res.status_code == 400
     assert "yourself" in self_share_res.json()["detail"]
 
-    # 2. Cannot assign OWNER role via share endpoint returns 400 Bad Request
+    # 2. Cannot assign OWNER role via share endpoint returns 422 Unprocessable Entity (schema boundary)
     owner_role_res = await authenticated_client.post(
         f"/physical-accounts/{account_id}/shares",
-        json={"email": "user@example.com", "role": "OWNER"},
+        json={"email": "collab_owner_attempt@example.com", "role": "OWNER"},
     )
-    assert owner_role_res.status_code == 400
-    assert "Cannot assign OWNER role" in owner_role_res.json()["detail"]
+    assert owner_role_res.status_code == 422
 
     # 3. AC6: Sharing with non-existent email returns 404 Not Found
     non_existent_res = await authenticated_client.post(

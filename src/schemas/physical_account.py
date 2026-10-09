@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from src.core.constants import AccountRoleType, CurrencyType, TaxWrapperType
+from src.core.constants import AccountRoleType, CurrencyType, ShareableRoleType, TaxWrapperType
 
 
 class InstitutionRead(BaseModel):
@@ -147,7 +147,7 @@ class PhysicalAccountShareCreate(BaseModel):
     """
 
     email: EmailStr = Field(..., description="Email address of the registered user to invite")
-    role: AccountRoleType = Field(
+    role: ShareableRoleType = Field(
         ...,
         description="Assigned role: must be CO_OWNER or ALLOCATOR",
     )
