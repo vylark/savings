@@ -1,11 +1,16 @@
 """API router for Physical Account and Institution endpoints."""
 
+import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies.physical_account import require_account_member
+from src.api.dependencies.physical_account import (
+    require_account_member,
+    require_account_owner,
+    require_account_reconciler,
+)
 from src.core.constants import Currency, TaxWrapper
 from src.core.limiter import limiter
 from src.core.users import current_verified_user
@@ -17,6 +22,8 @@ from src.schemas.physical_account import (
     PhysicalAccountCreate,
     PhysicalAccountListResponse,
     PhysicalAccountRead,
+    PhysicalAccountShareCreate,
+    PhysicalAccountShareRead,
 )
 from src.services.physical_account import PhysicalAccountService
 
@@ -175,4 +182,117 @@ async def get_physical_account(
         role=share.role.value,
         balance=balance,
         created_at=account.created_at,
+    )
+
+
+@router.post(
+    "/physical-accounts/{account_id}/shares",
+    response_model=PhysicalAccountShareRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Grant or update sharing access on a physical account",
+)
+@limiter.limit("30/minute")
+async def share_physical_account(
+    request: Request,  # noqa: ARG001
+    payload: PhysicalAccountShareCreate,
+    resolved: tuple[PhysicalAccount, PhysicalAccountShare] = Depends(require_account_owner),  # noqa: B008
+    db: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> PhysicalAccountShareRead:
+    """Invites a user by email to collaborate on a physical account with CO_OWNER or ALLOCATOR role.
+
+    Only the account OWNER can perform this operation.
+
+    Args:
+        request: FastAPI Request object for slowapi rate limiting.
+        payload: Invitation payload containing target user email and assigned role.
+        resolved: Tuple of resolved physical account and caller's owner share.
+        db: Asynchronous database session.
+
+    Returns:
+        PhysicalAccountShareRead response detailing collaborator permissions.
+    """
+    account, owner_share = resolved
+    share, target_user = await PhysicalAccountService.share_account(
+        db=db,
+        account=account,
+        owner_share=owner_share,
+        data=payload,
+    )
+    return PhysicalAccountShareRead(
+        id=share.id,
+        user_id=target_user.id,
+        email=target_user.email,
+        first_name=target_user.first_name,
+        last_name=target_user.last_name,
+        role=share.role.value,
+        created_at=share.created_at,
+    )
+
+
+@router.get(
+    "/physical-accounts/{account_id}/shares",
+    response_model=list[PhysicalAccountShareRead],
+    summary="List all users with access to this physical account",
+)
+@limiter.limit("60/minute")
+async def list_account_shares(
+    request: Request,  # noqa: ARG001
+    resolved: tuple[PhysicalAccount, PhysicalAccountShare] = Depends(require_account_reconciler),  # noqa: B008
+    db: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> list[PhysicalAccountShareRead]:
+    """Lists collaborators on this account. Accessible to OWNER and CO_OWNER.
+
+    Args:
+        request: FastAPI Request object for slowapi rate limiting.
+        resolved: Tuple of resolved physical account and caller's reconciler share.
+        db: Asynchronous database session.
+
+    Returns:
+        List of PhysicalAccountShareRead detailing collaborators and their access roles.
+    """
+    account, _ = resolved
+    records = await PhysicalAccountService.list_account_shares(
+        db=db,
+        account_id=account.id,
+    )
+    return [
+        PhysicalAccountShareRead(
+            id=share.id,
+            user_id=user.id,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            role=share.role.value,
+            created_at=share.created_at,
+        )
+        for share, user in records
+    ]
+
+
+@router.delete(
+    "/physical-accounts/{account_id}/shares/{target_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke account access from a user",
+)
+@limiter.limit("30/minute")
+async def revoke_account_share(
+    request: Request,  # noqa: ARG001
+    target_user_id: uuid.UUID,
+    resolved: tuple[PhysicalAccount, PhysicalAccountShare] = Depends(require_account_owner),  # noqa: B008
+    db: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> None:
+    """Revokes account access from a user. Only OWNER can revoke permissions.
+
+    Args:
+        request: FastAPI Request object for slowapi rate limiting.
+        target_user_id: Collaborator user UUID whose access is to be revoked.
+        resolved: Tuple of resolved physical account and caller's owner share.
+        db: Asynchronous database session.
+    """
+    account, owner_share = resolved
+    await PhysicalAccountService.revoke_account_share(
+        db=db,
+        account_id=account.id,
+        owner_user_id=owner_share.user_id,
+        target_user_id=target_user_id,
     )

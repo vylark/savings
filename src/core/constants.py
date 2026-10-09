@@ -34,6 +34,9 @@ CurrencyType = Literal["GBP", "USD", "EUR", "PHP"]
 AccountRoleType = Literal["OWNER", "CO_OWNER", "ALLOCATOR"]
 """Type alias representing physical account sharing roles."""
 
+ShareableRoleType = Literal["CO_OWNER", "ALLOCATOR"]
+"""Type alias representing collaborator roles that can be granted via account sharing."""
+
 
 class TaxWrapper(StrEnum):
     """Enumeration of supported UK tax wrappers.

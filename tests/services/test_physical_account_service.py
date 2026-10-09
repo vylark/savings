@@ -19,8 +19,8 @@ from src.models.user import User
 from src.services.physical_account import PhysicalAccountService
 
 
-async def _make_user(db_session: AsyncSession, email: str) -> User:
-    """Helper to create a verified User in the test database."""
+async def _make_user(db_session: AsyncSession, email: str, is_verified: bool = True) -> User:
+    """Helper to create a User in the test database."""
     user = User(
         email=email,
         hashed_password="hashed_password",
@@ -28,7 +28,7 @@ async def _make_user(db_session: AsyncSession, email: str) -> User:
         last_name="Member",
         tax_band=TaxBand.BASIC,
         is_active=True,
-        is_verified=True,
+        is_verified=is_verified,
         is_superuser=False,
     )
     db_session.add(user)
@@ -280,3 +280,175 @@ async def test_service_list_institutions_and_create_account(db_session: AsyncSes
             owner_id=uuid.uuid4(),
         )
     assert exc_info.value.status_code == 404
+
+
+async def test_service_share_account_success_create_and_update(db_session: AsyncSession) -> None:
+    """Verify share_account creates a new share and updates an existing share idempotently."""
+    from src.schemas.physical_account import PhysicalAccountShareCreate
+
+    owner = await _make_user(db_session, "owner.share.service@example.com")
+    collaborator = await _make_user(db_session, "collab.share.service@example.com")
+    account = await _make_account(db_session)
+
+    owner_share = PhysicalAccountShare(
+        user_id=owner.id,
+        physical_account_id=account.id,
+        role=AccountRole.OWNER,
+    )
+    db_session.add(owner_share)
+    await db_session.flush()
+
+    # 1. Create new share as ALLOCATOR
+    create_payload = PhysicalAccountShareCreate(
+        email="collab.share.service@example.com",
+        role="ALLOCATOR",
+    )
+    share, user_res = await PhysicalAccountService.share_account(
+        db=db_session,
+        account=account,
+        owner_share=owner_share,
+        data=create_payload,
+    )
+    assert share.physical_account_id == account.id
+    assert share.user_id == collaborator.id
+    assert share.role == AccountRole.ALLOCATOR
+    assert user_res.id == collaborator.id
+
+    # 2. Upgrade existing share to CO_OWNER
+    upgrade_payload = PhysicalAccountShareCreate(
+        email="collab.share.service@example.com",
+        role="CO_OWNER",
+    )
+    upgraded_share, _ = await PhysicalAccountService.share_account(
+        db=db_session,
+        account=account,
+        owner_share=owner_share,
+        data=upgrade_payload,
+    )
+    assert upgraded_share.id == share.id
+    assert upgraded_share.role == AccountRole.CO_OWNER
+
+
+async def test_service_share_account_validation_errors(db_session: AsyncSession) -> None:
+    """Verify share_account validates target user existence, verification status, and self-sharing."""
+    from src.schemas.physical_account import PhysicalAccountShareCreate
+
+    owner = await _make_user(db_session, "owner.val.service@example.com")
+    unverified_user = await _make_user(db_session, "unverified.service@example.com", is_verified=False)
+    account = await _make_account(db_session)
+
+    owner_share = PhysicalAccountShare(
+        user_id=owner.id,
+        physical_account_id=account.id,
+        role=AccountRole.OWNER,
+    )
+    db_session.add(owner_share)
+    await db_session.flush()
+
+    # 1. Non-existent email returns 404
+    with pytest.raises(HTTPException) as exc_info:
+        await PhysicalAccountService.share_account(
+            db=db_session,
+            account=account,
+            owner_share=owner_share,
+            data=PhysicalAccountShareCreate(email="missing@example.com", role="ALLOCATOR"),
+        )
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
+
+    # 2. Unverified email returns 400
+    with pytest.raises(HTTPException) as exc_info:
+        await PhysicalAccountService.share_account(
+            db=db_session,
+            account=account,
+            owner_share=owner_share,
+            data=PhysicalAccountShareCreate(email=unverified_user.email, role="ALLOCATOR"),
+        )
+    assert exc_info.value.status_code == 400
+    assert "not verified" in exc_info.value.detail
+
+    # 3. Self-sharing returns 400
+    with pytest.raises(HTTPException) as exc_info:
+        await PhysicalAccountService.share_account(
+            db=db_session,
+            account=account,
+            owner_share=owner_share,
+            data=PhysicalAccountShareCreate(email=owner.email, role="ALLOCATOR"),
+        )
+    assert exc_info.value.status_code == 400
+    assert "yourself" in exc_info.value.detail
+
+
+async def test_service_list_account_shares(db_session: AsyncSession) -> None:
+    """Verify list_account_shares retrieves all collaborators on an account with user data."""
+    owner = await _make_user(db_session, "owner.list.service@example.com")
+    collab = await _make_user(db_session, "collab.list.service@example.com")
+    account = await _make_account(db_session)
+
+    db_session.add_all(
+        [
+            PhysicalAccountShare(user_id=owner.id, physical_account_id=account.id, role=AccountRole.OWNER),
+            PhysicalAccountShare(user_id=collab.id, physical_account_id=account.id, role=AccountRole.CO_OWNER),
+        ]
+    )
+    await db_session.flush()
+
+    shares = await PhysicalAccountService.list_account_shares(db=db_session, account_id=account.id)
+    assert len(shares) == 2
+    user_emails = [user.email for _, user in shares]
+    assert owner.email in user_emails
+    assert collab.email in user_emails
+
+
+async def test_service_revoke_account_share_success_and_errors(db_session: AsyncSession) -> None:
+    """Verify revoke_account_share deletes share, rejects revoking owner, and 404s on missing share."""
+    owner = await _make_user(db_session, "owner.revoke.service@example.com")
+    collab = await _make_user(db_session, "collab.revoke.service@example.com")
+    account = await _make_account(db_session)
+
+    collab_share = PhysicalAccountShare(
+        user_id=collab.id,
+        physical_account_id=account.id,
+        role=AccountRole.ALLOCATOR,
+    )
+    db_session.add_all(
+        [
+            PhysicalAccountShare(user_id=owner.id, physical_account_id=account.id, role=AccountRole.OWNER),
+            collab_share,
+        ]
+    )
+    await db_session.flush()
+
+    # 1. Cannot revoke primary ownership (400)
+    with pytest.raises(HTTPException) as exc_info:
+        await PhysicalAccountService.revoke_account_share(
+            db=db_session,
+            account_id=account.id,
+            owner_user_id=owner.id,
+            target_user_id=owner.id,
+        )
+    assert exc_info.value.status_code == 400
+    assert "primary ownership" in exc_info.value.detail
+
+    # 2. Cannot revoke non-existent share (404)
+    with pytest.raises(HTTPException) as exc_info:
+        await PhysicalAccountService.revoke_account_share(
+            db=db_session,
+            account_id=account.id,
+            owner_user_id=owner.id,
+            target_user_id=uuid.uuid4(),
+        )
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
+
+    # 3. Successful revocation
+    await PhysicalAccountService.revoke_account_share(
+        db=db_session,
+        account_id=account.id,
+        owner_user_id=owner.id,
+        target_user_id=collab.id,
+    )
+
+    remaining_shares = await PhysicalAccountService.list_account_shares(db=db_session, account_id=account.id)
+    assert len(remaining_shares) == 1
+    assert remaining_shares[0][0].user_id == owner.id
