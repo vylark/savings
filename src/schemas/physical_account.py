@@ -124,3 +124,15 @@ class PhysicalAccountRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PhysicalAccountListResponse(BaseModel):
+    """Collection list response containing physical accounts and their calculated balances.
+
+    Attributes:
+        items: List of physical accounts accessible to the caller.
+        total_count: Total number of accessible physical accounts.
+    """
+
+    items: list[PhysicalAccountRead]
+    total_count: int

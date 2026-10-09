@@ -1,17 +1,20 @@
-"""Integration tests for Story 2.1: Create Physical Account and List Institutions endpoints."""
+"""Integration tests for Physical Account endpoints (Story 2.1 & Story 2.2)."""
 
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import AccountRole
+from src.core.constants import AccountRole, Currency, TaxBand, TaxWrapper
 from src.core.mail import outbox
-from src.models.physical_account import Institution, PhysicalAccountShare
+from src.models.ledger import LedgerEntry, TransactionEvent
+from src.models.physical_account import Institution, PhysicalAccount, PhysicalAccountShare
 from src.models.user import User
+from src.services.physical_account import PhysicalAccountService
 
 
 async def _verify_authenticated_client(client: httpx.AsyncClient, email: str = "user@example.com") -> None:
@@ -264,3 +267,160 @@ async def test_create_physical_account_rate_limit(
         },
     )
     assert exceeded_res.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_list_and_get_physical_accounts_ac_scenarios(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify Acceptance Criteria 1 to 6 for Story 2.2.
+
+    AC1: Nested institution delivery
+    AC2: Empty ledger balance = 0.00
+    AC3: Owner full visibility (£1,500.00 = £1,000 owner + £500 allocator)
+    AC4: Allocator privacy protection (£500.00 and role = ALLOCATOR)
+    AC5: Access control (404 Not Found for non-member)
+    AC6: Filtering (?currency=USD returns only USD-denominated accounts)
+    """
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    owner = (await db_session.execute(select(User))).scalars().one()
+
+    # Create Allocator user
+    allocator = User(
+        email="allocator@example.com",
+        hashed_password="hashed_password",
+        first_name="Alloc",
+        last_name="Ator",
+        tax_band=TaxBand.BASIC,
+        is_active=True,
+        is_verified=True,
+        is_superuser=False,
+    )
+    db_session.add(allocator)
+    await db_session.flush()
+
+    barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
+
+    # Create account A (GBP) shared with Owner and Allocator
+    account_a = PhysicalAccount(
+        name="Main Shared Account",
+        institution_id=barclays.id,
+        tax_wrapper=TaxWrapper.ISA,
+        currency=Currency.GBP,
+    )
+    db_session.add(account_a)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            PhysicalAccountShare(user_id=owner.id, physical_account_id=account_a.id, role=AccountRole.OWNER),
+            PhysicalAccountShare(user_id=allocator.id, physical_account_id=account_a.id, role=AccountRole.ALLOCATOR),
+        ]
+    )
+    await db_session.flush()
+
+    # Add ledger entries: £1,000 by owner, £500 by allocator
+    event_1 = TransactionEvent(description="Deposit 1")
+    event_2 = TransactionEvent(description="Deposit 2")
+    db_session.add_all([event_1, event_2])
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            LedgerEntry(
+                transaction_id=event_1.id,
+                user_id=owner.id,
+                physical_account_id=account_a.id,
+                virtual_account_id=uuid.uuid4(),
+                amount=Decimal("1000.00"),
+                currency=Currency.GBP,
+            ),
+            LedgerEntry(
+                transaction_id=event_2.id,
+                user_id=allocator.id,
+                physical_account_id=account_a.id,
+                virtual_account_id=uuid.uuid4(),
+                amount=Decimal("500.00"),
+                currency=Currency.GBP,
+            ),
+        ]
+    )
+
+    # Create account B (USD) with 0 ledger entries (AC2 & AC6)
+    account_b = PhysicalAccount(
+        name="USD Empty Account",
+        institution_id=barclays.id,
+        tax_wrapper=TaxWrapper.NONE,
+        currency=Currency.USD,
+    )
+    db_session.add(account_b)
+    await db_session.flush()
+    db_session.add(PhysicalAccountShare(user_id=owner.id, physical_account_id=account_b.id, role=AccountRole.OWNER))
+    await db_session.commit()
+
+    # Test as OWNER
+    res = await authenticated_client.get("/physical-accounts")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_count"] == 2
+    items = {item["name"]: item for item in data["items"]}
+
+    # AC1 & AC3: Owner sees total balance £1500.00 and nested institution
+    item_a = items["Main Shared Account"]
+    assert item_a["balance"] == "1500.00"
+    assert item_a["role"] == "OWNER"
+    assert item_a["institution"]["id"] == str(barclays.id)
+    assert item_a["institution"]["name"] == "Barclays"
+
+    # AC2: Empty ledger balance = 0.00
+    item_b = items["USD Empty Account"]
+    assert item_b["balance"] == "0.00"
+    assert item_b["currency"] == "USD"
+
+    # AC6: Currency filtering
+    usd_res = await authenticated_client.get("/physical-accounts?currency=USD")
+    assert usd_res.status_code == 200
+    usd_data = usd_res.json()
+    assert usd_data["total_count"] == 1
+    assert usd_data["items"][0]["id"] == str(account_b.id)
+
+    # Tax wrapper filtering
+    isa_res = await authenticated_client.get("/physical-accounts?tax_wrapper=ISA")
+    assert isa_res.status_code == 200
+    isa_data = isa_res.json()
+    assert isa_data["total_count"] == 1
+    assert isa_data["items"][0]["id"] == str(account_a.id)
+
+    # AC5: Access control (non-existent or non-member)
+    unknown_id = uuid.uuid4()
+    not_found_res = await authenticated_client.get(f"/physical-accounts/{unknown_id}")
+    assert not_found_res.status_code == 404
+
+    # Single account retrieval as OWNER
+    single_res = await authenticated_client.get(f"/physical-accounts/{account_a.id}")
+    assert single_res.status_code == 200
+    single_data = single_res.json()
+    assert single_data["balance"] == "1500.00"
+    assert single_data["role"] == "OWNER"
+    assert single_data["institution"]["name"] == "Barclays"
+
+    # AC4: Test as ALLOCATOR
+    allocator_accounts = await PhysicalAccountService.get_user_accounts(
+        db=db_session,
+        user_id=allocator.id,
+    )
+    assert len(allocator_accounts) == 1
+    assert allocator_accounts[0].id == account_a.id
+    assert allocator_accounts[0].role == "ALLOCATOR"
+    assert allocator_accounts[0].balance == Decimal("500.00")
+
+    # Single balance check for allocator directly via service
+    allocator_bal = await PhysicalAccountService.get_account_balance(
+        db=db_session,
+        account_id=account_a.id,
+        role=AccountRole.ALLOCATOR,
+        user_id=allocator.id,
+    )
+    assert allocator_bal == Decimal("500.00")
