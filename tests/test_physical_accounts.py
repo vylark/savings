@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import AccountRole, Currency, TaxBand, TaxWrapper
 from src.core.mail import outbox
+from src.main import app
 from src.models.ledger import LedgerEntry, TransactionEvent
 from src.models.physical_account import Institution, PhysicalAccount, PhysicalAccountShare
 from src.models.user import User
-from src.services.physical_account import PhysicalAccountService
 
 
 async def _verify_authenticated_client(client: httpx.AsyncClient, email: str = "user@example.com") -> None:
@@ -269,59 +269,76 @@ async def test_create_physical_account_rate_limit(
     assert exceeded_res.status_code == 429
 
 
-@pytest.mark.asyncio
-async def test_list_and_get_physical_accounts_ac_scenarios(
-    authenticated_client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    seeded_institutions: list[Institution],  # noqa: ARG001
-) -> None:
-    """Verify Acceptance Criteria 1 to 6 for Story 2.2.
+async def _create_authenticated_user_client(
+    email: str = "allocator@example.com",
+    password: str = "SavingsPlatform2026!XyZ#9",
+    first_name: str = "Alloc",
+    last_name: str = "Ator",
+    tax_band: TaxBand = TaxBand.BASIC,
+) -> httpx.AsyncClient:
+    """Helper to create, register, verify, and authenticate a distinct test user client."""
+    transport = httpx.ASGITransport(app=app)
+    authed_client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
-    AC1: Nested institution delivery
-    AC2: Empty ledger balance = 0.00
-    AC3: Owner full visibility (£1,500.00 = £1,000 owner + £500 allocator)
-    AC4: Allocator privacy protection (£500.00 and role = ALLOCATOR)
-    AC5: Access control (404 Not Found for non-member)
-    AC6: Filtering (?currency=USD returns only USD-denominated accounts)
-    """
-    await _verify_authenticated_client(authenticated_client, email="user@example.com")
-    owner = (await db_session.execute(select(User))).scalars().one()
-
-    # Create Allocator user
-    allocator = User(
-        email="allocator@example.com",
-        hashed_password="hashed_password",
-        first_name="Alloc",
-        last_name="Ator",
-        tax_band=TaxBand.BASIC,
-        is_active=True,
-        is_verified=True,
-        is_superuser=False,
+    reg_res = await authed_client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": password,
+            "first_name": first_name,
+            "last_name": last_name,
+            "tax_band": tax_band.value,
+        },
     )
-    db_session.add(allocator)
-    await db_session.flush()
+    assert reg_res.status_code == 201
 
+    login_res = await authed_client.post(
+        "/auth/jwt/login",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login_res.status_code == 200
+    access_token = login_res.json()["access_token"]
+    authed_client.headers["Authorization"] = f"Bearer {access_token}"
+
+    await _verify_authenticated_client(authed_client, email=email)
+    return authed_client
+
+
+async def _seed_test_accounts_and_ledger(
+    db_session: AsyncSession,
+    owner_email: str = "user@example.com",
+    allocator_email: str = "allocator@example.com",
+) -> tuple[User, User, PhysicalAccount, PhysicalAccount]:
+    """Helper to seed standard two-account scenario with owner and allocator shares."""
+    owner = (await db_session.execute(select(User).where(User.email == owner_email))).scalars().one()
+    allocator = (await db_session.execute(select(User).where(User.email == allocator_email))).scalars().one()
     barclays = (await db_session.execute(select(Institution).where(Institution.name == "Barclays"))).scalar_one()
 
-    # Create account A (GBP) shared with Owner and Allocator
     account_a = PhysicalAccount(
         name="Main Shared Account",
         institution_id=barclays.id,
         tax_wrapper=TaxWrapper.ISA,
         currency=Currency.GBP,
     )
-    db_session.add(account_a)
+    account_b = PhysicalAccount(
+        name="USD Empty Account",
+        institution_id=barclays.id,
+        tax_wrapper=TaxWrapper.NONE,
+        currency=Currency.USD,
+    )
+    db_session.add_all([account_a, account_b])
     await db_session.flush()
 
     db_session.add_all(
         [
             PhysicalAccountShare(user_id=owner.id, physical_account_id=account_a.id, role=AccountRole.OWNER),
             PhysicalAccountShare(user_id=allocator.id, physical_account_id=account_a.id, role=AccountRole.ALLOCATOR),
+            PhysicalAccountShare(user_id=owner.id, physical_account_id=account_b.id, role=AccountRole.OWNER),
         ]
     )
     await db_session.flush()
 
-    # Add ledger entries: £1,000 by owner, £500 by allocator
     event_1 = TransactionEvent(description="Deposit 1")
     event_2 = TransactionEvent(description="Deposit 2")
     db_session.add_all([event_1, event_2])
@@ -347,20 +364,22 @@ async def test_list_and_get_physical_accounts_ac_scenarios(
             ),
         ]
     )
-
-    # Create account B (USD) with 0 ledger entries (AC2 & AC6)
-    account_b = PhysicalAccount(
-        name="USD Empty Account",
-        institution_id=barclays.id,
-        tax_wrapper=TaxWrapper.NONE,
-        currency=Currency.USD,
-    )
-    db_session.add(account_b)
-    await db_session.flush()
-    db_session.add(PhysicalAccountShare(user_id=owner.id, physical_account_id=account_b.id, role=AccountRole.OWNER))
     await db_session.commit()
+    return owner, allocator, account_a, account_b
 
-    # Test as OWNER
+
+@pytest.mark.asyncio
+async def test_list_physical_accounts_owner_visibility_and_empty_balance(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC1 (nested institution), AC2 (zero balance), and AC3 (owner total balance) via HTTP."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    allocator_client = await _create_authenticated_user_client()
+
+    _, _, account_a, account_b = await _seed_test_accounts_and_ledger(db_session)
+
     res = await authenticated_client.get("/physical-accounts")
     assert res.status_code == 200
     data = res.json()
@@ -371,56 +390,164 @@ async def test_list_and_get_physical_accounts_ac_scenarios(
     item_a = items["Main Shared Account"]
     assert item_a["balance"] == "1500.00"
     assert item_a["role"] == "OWNER"
-    assert item_a["institution"]["id"] == str(barclays.id)
     assert item_a["institution"]["name"] == "Barclays"
+    assert item_a["currency"] == "GBP"
 
-    # AC2: Empty ledger balance = 0.00
+    # AC2: USD Empty Account has 0 ledger entries -> 0.00
     item_b = items["USD Empty Account"]
     assert item_b["balance"] == "0.00"
     assert item_b["currency"] == "USD"
 
-    # AC6: Currency filtering
+    # Single-account retrieval as OWNER
+    single_res = await authenticated_client.get(f"/physical-accounts/{account_a.id}")
+    assert single_res.status_code == 200
+    assert single_res.json()["balance"] == "1500.00"
+    assert single_res.json()["role"] == "OWNER"
+
+    await allocator_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_and_get_physical_accounts_allocator_privacy_http(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC4 (allocator privacy barrier) and AC5 (access boundary) end-to-end via HTTP as Allocator."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    allocator_client = await _create_authenticated_user_client(email="alloc.http@example.com")
+
+    _, _, account_a, account_b = await _seed_test_accounts_and_ledger(
+        db_session,
+        allocator_email="alloc.http@example.com",
+    )
+
+    # 1. GET /physical-accounts as Allocator: strictly sees allocated slice (£500.00) and only shared account
+    res = await allocator_client.get("/physical-accounts")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_count"] == 1
+    assert len(data["items"]) == 1
+
+    item = data["items"][0]
+    assert item["id"] == str(account_a.id)
+    assert item["role"] == "ALLOCATOR"
+    assert item["balance"] == "500.00"
+    assert item["institution"]["name"] == "Barclays"
+
+    # 2. GET /physical-accounts/{id} as Allocator for shared account
+    single_res = await allocator_client.get(f"/physical-accounts/{account_a.id}")
+    assert single_res.status_code == 200
+    single_data = single_res.json()
+    assert single_data["role"] == "ALLOCATOR"
+    assert single_data["balance"] == "500.00"
+
+    # 3. GET /physical-accounts/{id} as Allocator for unshared account (AC5) -> 404
+    unshared_res = await allocator_client.get(f"/physical-accounts/{account_b.id}")
+    assert unshared_res.status_code == 404
+
+    await allocator_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_physical_accounts_query_filtering(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify AC6 (query filtering by currency and tax wrapper) via HTTP."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    allocator_client = await _create_authenticated_user_client(email="filter.alloc@example.com")
+
+    _, _, account_a, account_b = await _seed_test_accounts_and_ledger(
+        db_session,
+        allocator_email="filter.alloc@example.com",
+    )
+
+    # Filter ?currency=USD returns only USD account
     usd_res = await authenticated_client.get("/physical-accounts?currency=USD")
     assert usd_res.status_code == 200
     usd_data = usd_res.json()
     assert usd_data["total_count"] == 1
     assert usd_data["items"][0]["id"] == str(account_b.id)
 
-    # Tax wrapper filtering
+    # Filter ?tax_wrapper=ISA returns only ISA account
     isa_res = await authenticated_client.get("/physical-accounts?tax_wrapper=ISA")
     assert isa_res.status_code == 200
     isa_data = isa_res.json()
     assert isa_data["total_count"] == 1
     assert isa_data["items"][0]["id"] == str(account_a.id)
 
-    # AC5: Access control (non-existent or non-member)
-    unknown_id = uuid.uuid4()
-    not_found_res = await authenticated_client.get(f"/physical-accounts/{unknown_id}")
-    assert not_found_res.status_code == 404
+    await allocator_client.aclose()
 
-    # Single account retrieval as OWNER
+
+@pytest.mark.asyncio
+async def test_get_physical_account_not_found(
+    authenticated_client: httpx.AsyncClient,
+) -> None:
+    """Verify AC5: GET /physical-accounts/{id} returns 404 for non-existent account."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    res = await authenticated_client.get(f"/physical-accounts/{uuid.uuid4()}")
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_physical_accounts_currency_guard_in_bulk_aggregation(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify bulk aggregation ignores ledger entries whose currency does not match the account's currency."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    allocator_client = await _create_authenticated_user_client(email="currency.guard@example.com")
+
+    owner, _, account_a, _ = await _seed_test_accounts_and_ledger(
+        db_session,
+        allocator_email="currency.guard@example.com",
+    )
+
+    # Add a mismatched currency ledger entry (USD entry on GBP account_a)
+    mismatch_event = TransactionEvent(description="Mismatched currency entry")
+    db_session.add(mismatch_event)
+    await db_session.flush()
+
+    db_session.add(
+        LedgerEntry(
+            transaction_id=mismatch_event.id,
+            user_id=owner.id,
+            physical_account_id=account_a.id,
+            virtual_account_id=uuid.uuid4(),
+            amount=Decimal("9999.00"),
+            currency=Currency.USD,
+        )
+    )
+    await db_session.commit()
+
+    # Bulk query should still strictly return £1,500.00 for account_a, ignoring the $9,999.00 entry
+    res = await authenticated_client.get("/physical-accounts")
+    assert res.status_code == 200
+    items = {item["name"]: item for item in res.json()["items"]}
+    assert items["Main Shared Account"]["balance"] == "1500.00"
+
+    # Single-account retrieval should also still strictly return £1,500.00
     single_res = await authenticated_client.get(f"/physical-accounts/{account_a.id}")
     assert single_res.status_code == 200
-    single_data = single_res.json()
-    assert single_data["balance"] == "1500.00"
-    assert single_data["role"] == "OWNER"
-    assert single_data["institution"]["name"] == "Barclays"
+    assert single_res.json()["balance"] == "1500.00"
 
-    # AC4: Test as ALLOCATOR
-    allocator_accounts = await PhysicalAccountService.get_user_accounts(
-        db=db_session,
-        user_id=allocator.id,
-    )
-    assert len(allocator_accounts) == 1
-    assert allocator_accounts[0].id == account_a.id
-    assert allocator_accounts[0].role == "ALLOCATOR"
-    assert allocator_accounts[0].balance == Decimal("500.00")
+    await allocator_client.aclose()
 
-    # Single balance check for allocator directly via service
-    allocator_bal = await PhysicalAccountService.get_account_balance(
-        db=db_session,
-        account_id=account_a.id,
-        role=AccountRole.ALLOCATOR,
-        user_id=allocator.id,
-    )
-    assert allocator_bal == Decimal("500.00")
+
+@pytest.mark.asyncio
+async def test_list_physical_accounts_rate_limit(
+    authenticated_client: httpx.AsyncClient,
+) -> None:
+    """Verify GET /physical-accounts enforces the 60 requests/minute rate limit."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+
+    for _ in range(60):
+        res = await authenticated_client.get("/physical-accounts")
+        assert res.status_code == 200
+
+    # 61st request triggers HTTP 429 Too Many Requests
+    exceeded_res = await authenticated_client.get("/physical-accounts")
+    assert exceeded_res.status_code == 429

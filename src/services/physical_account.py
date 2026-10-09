@@ -222,7 +222,11 @@ class PhysicalAccountService:
                     Decimal("0.00"),
                 ).label("user_balance"),
             )
-            .where(LedgerEntry.physical_account_id.in_(account_ids))
+            .join(PhysicalAccount, LedgerEntry.physical_account_id == PhysicalAccount.id)
+            .where(
+                LedgerEntry.physical_account_id.in_(account_ids),
+                LedgerEntry.currency == PhysicalAccount.currency,
+            )
             .group_by(LedgerEntry.physical_account_id)
         )
         results = await db.execute(ledger_stmt)
