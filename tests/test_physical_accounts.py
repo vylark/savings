@@ -764,6 +764,8 @@ async def test_share_physical_account_validation_guards(
         json={"email": "collab_owner_attempt@example.com", "role": "OWNER"},
     )
     assert owner_role_res.status_code == 422
+    error_detail = owner_role_res.json()["detail"]
+    assert any(e.get("loc") == ["body", "role"] for e in error_detail)
 
     # 3. AC6: Sharing with non-existent email returns 404 Not Found
     non_existent_res = await authenticated_client.post(

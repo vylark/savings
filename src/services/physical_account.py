@@ -331,19 +331,12 @@ class PhysicalAccountService:
             data: Collaborator invitation payload containing email and target role.
 
         Raises:
-            HTTPException: 400 if attempting to assign OWNER role or share with oneself,
-                or if target user is not verified.
+            HTTPException: 400 if attempting to share with oneself or if target user is not verified.
             HTTPException: 404 if target user is not found.
 
         Returns:
             Tuple of (PhysicalAccountShare, User) representing the active collaborator share.
         """
-        if str(data.role) == "OWNER":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot assign OWNER role via share endpoint.",
-            )
-
         stmt = select(User).where(User.__table__.c.email == data.email)
         target_user = (await db.execute(stmt)).scalar_one_or_none()
         if not target_user:
