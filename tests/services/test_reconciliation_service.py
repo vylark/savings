@@ -156,6 +156,7 @@ async def test_reconcile_account_positive_drift(db_session: AsyncSession) -> Non
     assert event.user_id == owner.id
     assert event.submitted_balance == Decimal("1050.00")
     assert event.calculated_drift == Decimal("50.00")
+    assert event.notes == "Accrued interest true-up"
 
     # Verify TransactionEvent description
     tx_event = await db_session.get(TransactionEvent, response.transaction_id)
@@ -249,6 +250,7 @@ async def test_reconcile_account_zero_drift(db_session: AsyncSession) -> None:
         account=account,
         actor_user_id=owner.id,
         submitted_balance=Decimal("2000.00"),
+        notes="Zero drift statement check",
     )
 
     assert response.previous_balance == Decimal("2000.00")
@@ -261,6 +263,7 @@ async def test_reconcile_account_zero_drift(db_session: AsyncSession) -> None:
     event = await db_session.get(ReconciliationEvent, response.reconciliation_event_id)
     assert event is not None
     assert event.calculated_drift == Decimal("0.00")
+    assert event.notes == "Zero drift statement check"
 
     # No additional transactions or entries should be created
     tx_count_after = (await db_session.execute(select(TransactionEvent))).scalars().all()

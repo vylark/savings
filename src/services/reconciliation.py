@@ -121,6 +121,7 @@ class ReconciliationService:
         actor_user_id: uuid.UUID,
         submitted_balance: Decimal,
         calculated_drift: Decimal,
+        notes: str | None = None,
     ) -> ReconciliationEvent:
         """Records and commits an immutable ReconciliationEvent audit row.
 
@@ -130,6 +131,7 @@ class ReconciliationService:
             actor_user_id: User UUID of the actor who submitted the reconciliation.
             submitted_balance: Bank statement balance submitted by user.
             calculated_drift: Computed drift difference.
+            notes: Optional audit note explaining the submission or drift.
 
         Returns:
             Refreshed ReconciliationEvent entity with database-assigned timestamp.
@@ -139,6 +141,7 @@ class ReconciliationService:
             user_id=actor_user_id,
             submitted_balance=submitted_balance,
             calculated_drift=calculated_drift,
+            notes=notes,
         )
         db.add(event)
         await db.commit()
@@ -208,6 +211,7 @@ class ReconciliationService:
             actor_user_id=actor_user_id,
             submitted_balance=submitted_balance,
             calculated_drift=drift,
+            notes=notes,
         )
 
         return ReconciliationResponse(

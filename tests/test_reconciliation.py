@@ -214,6 +214,7 @@ async def test_reconcile_physical_account_zero_drift(
 
     payload = {
         "submitted_balance": "2000.00",
+        "notes": "Audit statement match",
     }
     res = await authenticated_client.post(f"/physical-accounts/{account.id}/reconcile", json=payload)
     assert res.status_code == 200
@@ -230,6 +231,7 @@ async def test_reconcile_physical_account_zero_drift(
     event = await db_session.get(ReconciliationEvent, event_id)
     assert event is not None
     assert event.calculated_drift == Decimal("0.00")
+    assert event.notes == "Audit statement match"
 
 
 @pytest.mark.asyncio
@@ -392,3 +394,36 @@ async def test_reconcile_physical_account_rate_limit(
     # 11th request triggers 429 Too Many Requests
     exceeded_res = await authenticated_client.post(f"/physical-accounts/{account.id}/reconcile", json=payload)
     assert exceeded_res.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_reconcile_physical_account_negative_statement_balance(
+    authenticated_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    seeded_institutions: list[Institution],  # noqa: ARG001
+) -> None:
+    """Verify negative statement balance (overdrawn account) processes drift and triggers deficit warning."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
+    account = await _seed_account_with_balance(db_session, "user@example.com", Decimal("100.00"))
+
+    payload = {
+        "submitted_balance": "-50.00",
+        "notes": "Overdraft statement reconciliation",
+    }
+    res = await authenticated_client.post(f"/physical-accounts/{account.id}/reconcile", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["previous_balance"] == "100.00"
+    assert data["submitted_balance"] == "-50.00"
+    assert data["calculated_drift"] == "-150.00"
+    assert data["transaction_id"] is not None
+    assert data["deficit_warning"] is True
+
+    # Verify audit event persistence with notes
+    event_id = uuid.UUID(data["reconciliation_event_id"])
+    event = await db_session.get(ReconciliationEvent, event_id)
+    assert event is not None
+    assert event.submitted_balance == Decimal("-50.00")
+    assert event.calculated_drift == Decimal("-150.00")
+    assert event.notes == "Overdraft statement reconciliation"
