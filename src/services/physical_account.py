@@ -75,8 +75,8 @@ class PhysicalAccountService:
 
         effective_owner_id = owner_id or user.id
         if effective_owner_id != user.id:
-            # TODO: Security hardening required - verify caller is authorized (e.g., admin role or
-            # target user consent) to assign ownership to an arbitrary third party. Permitted for Story 2.1 MVP.
+            # Internal parameter: when invoked by admin tools or test fixtures to attribute
+            # an account to a third party, verify the target user exists.
             target_owner = await db.get(User, effective_owner_id)
             if not target_owner:
                 raise HTTPException(
@@ -295,7 +295,7 @@ class PhysicalAccountService:
 
     @staticmethod
     async def ensure_unallocated_bucket(
-        db: AsyncSession,
+        db: AsyncSession,  # noqa: ARG002
         user_id: uuid.UUID,
         currency: Currency,
     ) -> uuid.UUID:
@@ -305,13 +305,14 @@ class PhysicalAccountService:
         and deposits as the default balancing virtual bucket.
 
         Args:
-            db: Database session.
+            db: Database session. Reserved for future virtual account table provisioning.
             user_id: User identifier.
             currency: Account currency.
 
         Returns:
             UUID of the unallocated virtual account.
         """
+        # TODO: VirtualAccount table not yet implemented — db param reserved for future provisioning in Epic 3.
         unallocated_namespace = uuid.uuid5(user_id, f"unallocated_{currency.value}")
         return unallocated_namespace
 

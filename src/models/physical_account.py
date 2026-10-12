@@ -174,6 +174,7 @@ class PhysicalAccountShare(Base):
         physical_account_id: Foreign key to shared PhysicalAccount.
         role: RBAC authorization tier (OWNER, CO_OWNER, ALLOCATOR).
         created_at: Timestamp when access was granted.
+        updated_at: Timestamp when access or role was last updated.
     """
 
     __tablename__ = "physical_account_share"
@@ -202,6 +203,12 @@ class PhysicalAccountShare(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )
 

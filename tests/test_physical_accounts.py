@@ -99,13 +99,13 @@ async def test_create_physical_account_success(
 
 
 @pytest.mark.asyncio
-async def test_create_physical_account_unwrapped_none_and_custom_owner(
+async def test_create_physical_account_unwrapped_none(
     authenticated_client: httpx.AsyncClient,
     db_session: AsyncSession,
     seeded_institutions: list[Institution],  # noqa: ARG001
 ) -> None:
-    """Verify creating an unwrapped account (tax_wrapper=NONE) with explicit owner_id."""
-    await _verify_authenticated_client(authenticated_client)
+    """Verify creating an unwrapped account (tax_wrapper=NONE) assigns ownership to caller and ignores rogue owner_id."""
+    await _verify_authenticated_client(authenticated_client, email="user@example.com")
 
     monzo = (await db_session.execute(select(Institution).where(Institution.name == "Monzo"))).scalar_one()
 
@@ -121,13 +121,15 @@ async def test_create_physical_account_unwrapped_none_and_custom_owner(
     db_session.add(other_user)
     await db_session.flush()
 
+    caller = (await db_session.execute(select(User).where(User.email == "user@example.com"))).scalar_one()
+
     payload = {
         "name": "Everyday Notice Pot",
         "institution_id": str(monzo.id),
         "tax_wrapper": "NONE",
         "currency": "PHP",
         "access_delay_days": 30,
-        "owner_id": str(other_user.id),
+        "owner_id": str(other_user.id),  # Rogue field attempting privilege escalation
     }
     res = await authenticated_client.post("/physical-accounts", json=payload)
     assert res.status_code == 201
@@ -137,18 +139,14 @@ async def test_create_physical_account_unwrapped_none_and_custom_owner(
     assert data["access_delay_days"] == 30
     assert data["maturity_date"] is None
 
-    # Verify owner_id was assigned on the share
+    # Verify caller remains the owner; rogue owner_id is ignored
     share = (
         await db_session.execute(
             select(PhysicalAccountShare).where(PhysicalAccountShare.physical_account_id == uuid.UUID(data["id"]))
         )
     ).scalar_one()
-    assert share.user_id == other_user.id
-
-    # Non-existent owner_id returns 404 Not Found
-    bad_owner_payload = {**payload, "owner_id": str(uuid.uuid4())}
-    bad_owner_res = await authenticated_client.post("/physical-accounts", json=bad_owner_payload)
-    assert bad_owner_res.status_code == 404
+    assert share.user_id == caller.id
+    assert share.user_id != other_user.id
 
 
 @pytest.mark.asyncio
@@ -601,6 +599,7 @@ async def test_share_physical_account_grant_success_and_visibility(
     assert share_data["role"] == "ALLOCATOR"
     assert "id" in share_data
     assert "created_at" in share_data
+    assert "updated_at" in share_data
 
     # 3. User B immediately sees the account in GET /physical-accounts/
     user_b_list_after = await user_b_client.get("/physical-accounts")
@@ -644,6 +643,7 @@ async def test_share_physical_account_role_upgrade_and_downgrade(
     )
     assert upgrade_res.status_code == 201
     assert upgrade_res.json()["role"] == "CO_OWNER"
+    assert "updated_at" in upgrade_res.json()
 
     # Collab now sees total balance £1500.00
     get_upgraded = await collab_client.get(f"/physical-accounts/{account_a.id}")

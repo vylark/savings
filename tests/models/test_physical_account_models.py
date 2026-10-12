@@ -236,6 +236,8 @@ async def test_physical_account_share_uniqueness_and_cascade(db_session: AsyncSe
     )
     db_session.add(share1)
     await db_session.flush()
+    assert share1.created_at is not None
+    assert share1.updated_at is not None
 
     # Duplicate share for same (user_id, physical_account_id) triggers IntegrityError
     with pytest.raises(IntegrityError):

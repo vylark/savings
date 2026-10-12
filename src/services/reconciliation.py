@@ -67,7 +67,6 @@ class ReconciliationService:
         account: PhysicalAccount,
         owner_id: uuid.UUID,
         drift: Decimal,
-        notes: str | None = None,
     ) -> tuple[uuid.UUID, bool]:
         """Creates true-up TransactionEvent and LedgerEntry and checks deficit condition.
 
@@ -76,7 +75,6 @@ class ReconciliationService:
             account: Locked PhysicalAccount entity being reconciled.
             owner_id: Primary owner UUID whose Unallocated bucket receives the true-up.
             drift: Monetary drift amount to record (positive or negative).
-            notes: Optional user-supplied audit note describing the true-up.
 
         Returns:
             Tuple of (transaction_id, deficit_warning).
@@ -87,7 +85,11 @@ class ReconciliationService:
             currency=account.currency,
         )
 
-        # Check owner's unallocated balance to evaluate deficit state
+        # Check owner's unallocated balance to evaluate deficit state.
+        # Concurrency note: pre_unallocated_bal is a snapshot of unallocated funds prior to applying drift.
+        # The SELECT FOR UPDATE row-lock on PhysicalAccount serializes concurrent reconciliations on the same account.
+        # However, concurrent deposits to this account are not gated by this lock in MVP. Broader serialization
+        # across all mutating ledger writes to the account will be introduced in subsequent epics.
         unallocated_bal_stmt = select(func.coalesce(func.sum(LedgerEntry.amount), Decimal("0.00"))).where(
             LedgerEntry.user_id == owner_id,
             LedgerEntry.virtual_account_id == unallocated_virtual_id,
@@ -96,8 +98,9 @@ class ReconciliationService:
         pre_unallocated_bal = (await db.execute(unallocated_bal_stmt)).scalar_one()
         deficit_warning = (pre_unallocated_bal + drift) < Decimal("0.00")
 
-        clean_notes = notes.strip() if notes and notes.strip() else None
-        tx_desc = clean_notes or f"Reconciliation true-up for {account.name}"
+        # TransactionEvent description represents the automated ledger operation.
+        # User audit annotations (notes) are stored exclusively on ReconciliationEvent.
+        tx_desc = f"Reconciliation true-up for {account.name}"
         tx_event = TransactionEvent(description=tx_desc)
         db.add(tx_event)
         await db.flush()
@@ -201,7 +204,6 @@ class ReconciliationService:
                 account=locked_account,
                 owner_id=owner_id,
                 drift=drift,
-                notes=notes,
             )
 
         # 5. Record immutable ReconciliationEvent audit log

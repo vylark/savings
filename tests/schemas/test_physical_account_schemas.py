@@ -7,7 +7,12 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from src.schemas.physical_account import ReconciliationRequest, ReconciliationResponse
+from src.schemas.physical_account import (
+    PhysicalAccountCreate,
+    PhysicalAccountShareRead,
+    ReconciliationRequest,
+    ReconciliationResponse,
+)
 
 
 def test_reconciliation_request_valid() -> None:
@@ -68,3 +73,35 @@ def test_reconciliation_response_model() -> None:
     assert resp.transaction_id == tx_id
     assert resp.deficit_warning is False
     assert resp.timestamp == now
+
+
+def test_physical_account_create_schema() -> None:
+    """Verify PhysicalAccountCreate schema attributes and that owner_id is not accepted."""
+    inst_id = uuid.uuid4()
+    payload = PhysicalAccountCreate(
+        name="Vault",
+        institution_id=inst_id,
+        tax_wrapper="NONE",
+        currency="GBP",
+    )
+    assert payload.name == "Vault"
+    assert payload.institution_id == inst_id
+    assert not hasattr(payload, "owner_id")
+
+
+def test_physical_account_share_read_schema() -> None:
+    """Verify PhysicalAccountShareRead schema contains both created_at and updated_at."""
+    now = datetime.now(UTC)
+    share = PhysicalAccountShareRead(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        email="collab@example.com",
+        first_name="Jane",
+        last_name="Doe",
+        role="CO_OWNER",
+        created_at=now,
+        updated_at=now,
+    )
+    assert share.created_at == now
+    assert share.updated_at == now
+    assert share.role == "CO_OWNER"

@@ -38,9 +38,6 @@ class PhysicalAccountCreate(BaseModel):
         interest_rate: Annual interest rate as decimal (e.g., 0.0450 for 4.50%), optional.
         access_delay_days: Notice period or withdrawal delay in business days (0 to 365).
         maturity_date: Optional fixed-term maturity date for fixed rate bonds/ISAs.
-        owner_id: Optional explicit owner UUID (defaults to authenticated caller).
-            Security Note / TODO: Arbitrary cross-user attribution is permitted for Story 2.1 MVP
-            but must be hardened (e.g., admin-only or target user consent) in future stories.
     """
 
     name: str = Field(..., min_length=1, max_length=100, description="User-assigned account name")
@@ -62,15 +59,6 @@ class PhysicalAccountCreate(BaseModel):
     maturity_date: date | None = Field(
         default=None,
         description="Optional fixed-term maturity date for fixed rate bonds/ISAs",
-    )
-    owner_id: uuid.UUID | None = Field(
-        default=None,
-        description=(
-            "Optional explicit owner UUID (defaults to authenticated caller). "
-            "TODO: Security hardening required - assigning arbitrary third-party owners "
-            "is permitted in Story 2.1 MVP but requires admin authorization or target user consent "
-            "in future stories."
-        ),
     )
 
     @field_validator("maturity_date")
@@ -164,6 +152,7 @@ class PhysicalAccountShareRead(BaseModel):
         last_name: Surname of the collaborator.
         role: Assigned AccountRoleType.
         created_at: Timestamp when permission was established.
+        updated_at: Timestamp when permission was last modified.
     """
 
     id: uuid.UUID
@@ -173,6 +162,7 @@ class PhysicalAccountShareRead(BaseModel):
     last_name: str
     role: AccountRoleType
     created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

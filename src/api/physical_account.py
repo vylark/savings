@@ -46,6 +46,12 @@ async def list_institutions(
 ) -> list[InstitutionRead]:
     """Retrieves supported financial institutions catalog.
 
+    Note on Authentication:
+        This endpoint is intentionally unauthenticated to support registration, onboarding,
+        and public directory listings without requiring user login. If sensitive metadata
+        (e.g., internal URLs, Open Banking provider credentials) is associated with institutions
+        in future releases, this decision should be revisited.
+
     Args:
         request: FastAPI Request object for slowapi rate limiting.
         search: Optional case-insensitive substring filter for institution name.
@@ -86,7 +92,6 @@ async def create_physical_account(
         db=db,
         user=user,
         data=payload,
-        owner_id=payload.owner_id,
     )
 
     return PhysicalAccountRead(
@@ -229,6 +234,7 @@ async def share_physical_account(
         last_name=target_user.last_name,
         role=share.role.value,
         created_at=share.created_at,
+        updated_at=share.updated_at,
     )
 
 
@@ -253,6 +259,9 @@ async def list_account_shares(
     Returns:
         List of PhysicalAccountShareRead detailing collaborators and their access roles.
     """
+    # Collaborator visibility is intentionally restricted to OWNER and CO_OWNER (via require_account_reconciler).
+    # ALLOCATOR access is excluded to protect collaborator privacy: allocators have visibility only into
+    # their own assigned balances and pots, not the identity of other users sharing the physical account.
     account, _ = resolved
     records = await PhysicalAccountService.list_account_shares(
         db=db,
@@ -267,6 +276,7 @@ async def list_account_shares(
             last_name=user.last_name,
             role=share.role.value,
             created_at=share.created_at,
+            updated_at=share.updated_at,
         )
         for share, user in records
     ]

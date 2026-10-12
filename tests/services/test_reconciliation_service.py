@@ -158,10 +158,10 @@ async def test_reconcile_account_positive_drift(db_session: AsyncSession) -> Non
     assert event.calculated_drift == Decimal("50.00")
     assert event.notes == "Accrued interest true-up"
 
-    # Verify TransactionEvent description
+    # Verify TransactionEvent description is auto-generated operation description
     tx_event = await db_session.get(TransactionEvent, response.transaction_id)
     assert tx_event is not None
-    assert tx_event.description == "Accrued interest true-up"
+    assert tx_event.description == f"Reconciliation true-up for {account.name}"
 
     # Verify LedgerEntry true-up
     entries = (

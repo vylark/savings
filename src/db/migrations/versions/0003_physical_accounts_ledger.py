@@ -55,7 +55,11 @@ def upgrade() -> None:
             sa.Enum("NONE", "ISA", "SIPP", "GIA", name="taxwrapper", native_enum=False, length=20),
             nullable=False,
         ),
-        sa.Column("currency", sa.Enum("GBP", "USD", "EUR", "PHP", name="currency", native_enum=False), nullable=False),
+        sa.Column(
+            "currency",
+            sa.Enum("GBP", "USD", "EUR", "PHP", name="currency", native_enum=False, length=3),
+            nullable=False,
+        ),
         sa.Column("interest_rate", sa.Numeric(precision=5, scale=4), nullable=True),
         sa.Column("access_delay_days", sa.Integer(), nullable=False),
         sa.Column("maturity_date", sa.Date(), nullable=True),
