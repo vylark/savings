@@ -23,7 +23,15 @@ from src.models.user import User
 
 
 async def _create_test_user(db_session: AsyncSession, email: str = "model.user@example.com") -> User:
-    """Helper to insert and flush a test User entity."""
+    """Inserts and flushes a test User entity.
+
+    Args:
+        db_session: Active transactional test database session.
+        email: Email address for the user account.
+
+    Returns:
+        The newly persisted User entity.
+    """
     user = User(
         email=email,
         hashed_password="hashed_password_placeholder",
@@ -43,7 +51,15 @@ async def _create_test_institution(
     db_session: AsyncSession,
     name: str = "Barclays",
 ) -> Institution:
-    """Helper to insert and flush a test Institution entity."""
+    """Inserts and flushes a test Institution entity.
+
+    Args:
+        db_session: Active transactional test database session.
+        name: Name of the financial institution.
+
+    Returns:
+        The newly persisted Institution entity.
+    """
     inst = Institution(name=name)
     db_session.add(inst)
     await db_session.flush()
@@ -51,7 +67,11 @@ async def _create_test_institution(
 
 
 async def test_institution_hierarchy_and_uniqueness(db_session: AsyncSession) -> None:
-    """Verify Institution creation, self-referential parent link, and unique name constraint."""
+    """Verifies Institution creation, self-referential parent link, and unique name constraint.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     parent = Institution(name="Lloyds Bank")
     db_session.add(parent)
     await db_session.flush()
@@ -73,8 +93,33 @@ async def test_institution_hierarchy_and_uniqueness(db_session: AsyncSession) ->
             await db_session.flush()
 
 
+async def test_institution_parent_on_delete_set_null(db_session: AsyncSession) -> None:
+    """Verifies that deleting a parent institution sets child parent_institution_id to NULL.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
+    parent = Institution(name="Parent Banking Group plc")
+    db_session.add(parent)
+    await db_session.flush()
+
+    child = Institution(name="Subsidiary Brand", parent_institution_id=parent.id)
+    db_session.add(child)
+    await db_session.flush()
+
+    await db_session.delete(parent)
+    await db_session.flush()
+    await db_session.refresh(child)
+
+    assert child.parent_institution_id is None
+
+
 async def test_physical_account_foreign_key_and_restrict_delete(db_session: AsyncSession) -> None:
-    """Verify PhysicalAccount institution FK enforcement and RESTRICT on institution deletion."""
+    """Verifies PhysicalAccount institution FK enforcement and RESTRICT on institution deletion.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     # 1. Invalid institution_id triggers ForeignKeyViolation
     with pytest.raises(IntegrityError):
         async with db_session.begin_nested():
@@ -109,7 +154,11 @@ async def test_physical_account_foreign_key_and_restrict_delete(db_session: Asyn
 
 
 async def test_physical_account_check_constraints(db_session: AsyncSession) -> None:
-    """Verify CheckConstraints on negative access_delay_days and negative interest_rate."""
+    """Verifies CheckConstraints on negative access_delay_days and negative interest_rate.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     inst = await _create_test_institution(db_session)
 
     # Negative access_delay_days
@@ -140,8 +189,35 @@ async def test_physical_account_check_constraints(db_session: AsyncSession) -> N
             await db_session.flush()
 
 
+async def test_physical_account_defaults_and_zero_boundaries(db_session: AsyncSession) -> None:
+    """Verifies default values and valid zero boundary constraints on PhysicalAccount.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
+    inst = await _create_test_institution(db_session, name="Boundary Bank")
+    account = PhysicalAccount(
+        name="Zero Boundary Saver",
+        institution_id=inst.id,
+        tax_wrapper=TaxWrapper.NONE,
+        interest_rate=Decimal("0.0000"),
+        access_delay_days=0,
+    )
+    db_session.add(account)
+    await db_session.flush()
+
+    assert account.currency == Currency.GBP
+    assert account.access_delay_days == 0
+    assert account.interest_rate == Decimal("0.0000")
+    assert account.maturity_date is None
+
+
 async def test_physical_account_share_uniqueness_and_cascade(db_session: AsyncSession) -> None:
-    """Verify unique (user_id, physical_account_id) constraint and cascade delete on PhysicalAccount."""
+    """Verifies unique (user_id, physical_account_id) constraint and cascade delete on PhysicalAccount.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     user = await _create_test_user(db_session)
     inst = await _create_test_institution(db_session)
     account = PhysicalAccount(
@@ -207,8 +283,47 @@ async def test_physical_account_share_uniqueness_and_cascade(db_session: AsyncSe
     assert remaining == []
 
 
+async def test_physical_account_share_cascade_on_user_delete(db_session: AsyncSession) -> None:
+    """Verifies that deleting a collaborator user cascades to delete their share record.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
+    user = await _create_test_user(db_session, email="share.cascade@example.com")
+    inst = await _create_test_institution(db_session, name="Share Cascade Bank")
+    account = PhysicalAccount(
+        name="Shared Saver",
+        institution_id=inst.id,
+        tax_wrapper=TaxWrapper.NONE,
+    )
+    db_session.add(account)
+    await db_session.flush()
+
+    share = PhysicalAccountShare(
+        user_id=user.id,
+        physical_account_id=account.id,
+        role=AccountRole.ALLOCATOR,
+    )
+    db_session.add(share)
+    await db_session.flush()
+
+    await db_session.delete(user)
+    await db_session.flush()
+
+    remaining_shares = (
+        (await db_session.execute(select(PhysicalAccountShare).where(PhysicalAccountShare.id == share.id)))
+        .scalars()
+        .all()
+    )
+    assert remaining_shares == []
+
+
 async def test_reconciliation_and_ledger_audit_preservation(db_session: AsyncSession) -> None:
-    """Verify ReconciliationEvent and LedgerEntry creation and RESTRICT on User deletion."""
+    """Verifies ReconciliationEvent and LedgerEntry creation and RESTRICT on User deletion.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     user = await _create_test_user(db_session, email="auditor@example.com")
     inst = await _create_test_institution(db_session)
     account = PhysicalAccount(
@@ -251,8 +366,48 @@ async def test_reconciliation_and_ledger_audit_preservation(db_session: AsyncSes
             await db_session.flush()
 
 
+async def test_reconciliation_event_cascade_on_account_delete(db_session: AsyncSession) -> None:
+    """Verifies that deleting a PhysicalAccount cascades to delete associated reconciliation records.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
+    user = await _create_test_user(db_session, email="recon.cascade@example.com")
+    inst = await _create_test_institution(db_session, name="Recon Cascade Bank")
+    account = PhysicalAccount(
+        name="Recon Account",
+        institution_id=inst.id,
+        tax_wrapper=TaxWrapper.GIA,
+    )
+    db_session.add(account)
+    await db_session.flush()
+
+    recon = ReconciliationEvent(
+        physical_account_id=account.id,
+        user_id=user.id,
+        submitted_balance=Decimal("250.00"),
+        calculated_drift=Decimal("0.00"),
+    )
+    db_session.add(recon)
+    await db_session.flush()
+
+    await db_session.delete(account)
+    await db_session.flush()
+
+    remaining_recons = (
+        (await db_session.execute(select(ReconciliationEvent).where(ReconciliationEvent.id == recon.id)))
+        .scalars()
+        .all()
+    )
+    assert remaining_recons == []
+
+
 async def test_seed_institutions_idempotency(db_session: AsyncSession) -> None:
-    """Verify seed_institutions populates all initial providers and is idempotent on repeat calls."""
+    """Verifies seed_institutions populates all initial providers and is idempotent on repeat calls.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
     first_run = await seed_institutions(db_session, commit=False)
     assert len(first_run) == len(INITIAL_INSTITUTIONS)
 
@@ -269,13 +424,21 @@ async def test_seed_institutions_idempotency(db_session: AsyncSession) -> None:
 
 
 async def test_seed_development_data_success_and_error(db_session: AsyncSession) -> None:
-    """Verify seed_development_data runs cleanly and raises SeedError on database failure."""
+    """Verifies seed_development_data runs cleanly and raises SeedError on database failure.
+
+    Args:
+        db_session: Active transactional test database session.
+    """
 
     class _DummySessionCtx:
+        """Dummy asynchronous session context manager yielding the test db_session."""
+
         async def __aenter__(self) -> AsyncSession:
+            """Enters the context and yields the session."""
             return db_session
 
         async def __aexit__(self, *args: object) -> None:
+            """Exits the context manager cleanly."""
             pass
 
     with patch("src.db.seed.create_session", return_value=_DummySessionCtx()):
@@ -291,10 +454,14 @@ async def test_seed_development_data_success_and_error(db_session: AsyncSession)
     broken_session.execute.side_effect = RuntimeError("DB failure")
 
     class _BrokenSessionCtx:
+        """Broken asynchronous session context manager yielding a failing mock session."""
+
         async def __aenter__(self) -> AsyncSession:
+            """Enters the context and yields the broken session."""
             return broken_session
 
         async def __aexit__(self, *args: object) -> None:
+            """Exits the context manager cleanly."""
             pass
 
     with (
