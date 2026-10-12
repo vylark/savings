@@ -225,10 +225,13 @@ async def test_reconciliation_and_ledger_audit_preservation(db_session: AsyncSes
         user_id=user.id,
         submitted_balance=Decimal("1000.00"),
         calculated_drift=Decimal("1000.00"),
+        notes="Initial true-up note",
     )
     tx_event = TransactionEvent(description="Initial true-up")
     db_session.add_all([recon, tx_event])
     await db_session.flush()
+
+    assert recon.notes == "Initial true-up note"
 
     entry = LedgerEntry(
         transaction_id=tx_event.id,

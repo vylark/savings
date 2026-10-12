@@ -224,6 +224,7 @@ class ReconciliationEvent(Base):
         user_id: Actor who submitted the statement balance.
         submitted_balance: Real-world balance reported by bank statement.
         calculated_drift: Difference between submitted balance and ledger balance.
+        notes: Optional audit note explaining the submission or drift.
         timestamp: Time of reconciliation action.
     """
 
@@ -252,6 +253,10 @@ class ReconciliationEvent(Base):
     calculated_drift: Mapped[Decimal] = mapped_column(
         Numeric(precision=18, scale=2),
         nullable=False,
+    )
+    notes: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

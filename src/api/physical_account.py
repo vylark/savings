@@ -24,8 +24,11 @@ from src.schemas.physical_account import (
     PhysicalAccountRead,
     PhysicalAccountShareCreate,
     PhysicalAccountShareRead,
+    ReconciliationRequest,
+    ReconciliationResponse,
 )
 from src.services.physical_account import PhysicalAccountService
+from src.services.reconciliation import ReconciliationService
 
 router = APIRouter(tags=["Physical Accounts & Institutions"])
 
@@ -295,4 +298,42 @@ async def revoke_account_share(
         account_id=account.id,
         owner_user_id=owner_share.user_id,
         target_user_id=target_user_id,
+    )
+
+
+@router.post(
+    "/physical-accounts/{account_id}/reconcile",
+    response_model=ReconciliationResponse,
+    summary="Submit actual statement balance to calculate drift and true-up ledger",
+)
+@limiter.limit("10/minute")
+async def reconcile_physical_account(
+    request: Request,  # noqa: ARG001
+    payload: ReconciliationRequest,
+    resolved: tuple[PhysicalAccount, PhysicalAccountShare] = Depends(require_account_reconciler),  # noqa: B008
+    user: User = Depends(current_verified_user),  # noqa: B008
+    db: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> ReconciliationResponse:
+    """Reconciles physical account balance against real-world statement balance.
+
+    Calculates drift, records audit log, and creates true-up ledger entries.
+    Accessible only to OWNER and CO_OWNER roles.
+
+    Args:
+        request: FastAPI Request object for slowapi rate limiting.
+        payload: Submitted actual statement balance and optional notes.
+        resolved: Tuple of target physical account and caller's reconciler share.
+        user: Authenticated and verified calling user.
+        db: Asynchronous database session.
+
+    Returns:
+        ReconciliationResponse detailing calculated drift, transaction ID, and deficit warning.
+    """
+    account, _ = resolved
+    return await ReconciliationService.reconcile_account(
+        db=db,
+        account=account,
+        actor_user_id=user.id,
+        submitted_balance=payload.submitted_balance,
+        notes=payload.notes,
     )
