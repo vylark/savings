@@ -175,3 +175,56 @@ class PhysicalAccountShareRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ReconciliationRequest(BaseModel):
+    """Payload schema for submitting actual bank statement balance.
+
+    Attributes:
+        submitted_balance: Confirmed balance with external institution (precision 18, 2 decimal places).
+        notes: Optional audit note (e.g., 'End of month interest statement').
+    """
+
+    submitted_balance: Decimal = Field(
+        ...,
+        max_digits=18,
+        decimal_places=2,
+        description="Current actual balance confirmed with the real-world institution",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Optional audit note (e.g. 'End of month interest statement')",
+    )
+
+
+class ReconciliationResponse(BaseModel):
+    """Result schema of the balance reconciliation and true-up process.
+
+    Attributes:
+        reconciliation_event_id: UUID of created immutable ReconciliationEvent audit record.
+        physical_account_id: UUID of reconciled PhysicalAccount.
+        previous_balance: Computed ledger balance prior to reconciliation.
+        submitted_balance: Actual statement balance provided in request.
+        calculated_drift: Difference (submitted_balance - previous_balance).
+        transaction_id: UUID of created TransactionEvent, or None if drift was zero.
+        deficit_warning: True if negative drift caused the owner Unallocated bucket to drop below zero.
+        timestamp: UTC timestamp when reconciliation event was recorded.
+    """
+
+    reconciliation_event_id: uuid.UUID
+    physical_account_id: uuid.UUID
+    previous_balance: Decimal
+    submitted_balance: Decimal
+    calculated_drift: Decimal
+    transaction_id: uuid.UUID | None = Field(
+        default=None,
+        description="ID of created true-up transaction (null if drift was zero)",
+    )
+    deficit_warning: bool = Field(
+        default=False,
+        description="True if negative drift drove the Unallocated virtual bucket into negative territory",
+    )
+    timestamp: datetime
+
+    model_config = ConfigDict(from_attributes=True)
