@@ -452,3 +452,145 @@ async def test_service_revoke_account_share_success_and_errors(db_session: Async
     remaining_shares = await PhysicalAccountService.list_account_shares(db=db_session, account_id=account.id)
     assert len(remaining_shares) == 1
     assert remaining_shares[0][0].user_id == owner.id
+
+
+async def test_service_get_user_accounts(db_session: AsyncSession) -> None:
+    """Verify get_user_accounts retrieves accounts with role-based balances and filtering.
+
+    Tests that:
+    1. A user without accounts receives an empty list.
+    2. An OWNER sees total account balance while an ALLOCATOR sees only their own slice.
+    3. Filtering by currency restricts output to matching accounts.
+    4. Filtering by tax wrapper restricts output to matching accounts.
+    """
+    user_owner = await _make_user(db_session, "service.get_user_acc.owner@example.com")
+    user_collab = await _make_user(db_session, "service.get_user_acc.collab@example.com")
+    outsider = await _make_user(db_session, "service.get_user_acc.outsider@example.com")
+
+    # 1. User with no shares returns empty list
+    no_accounts = await PhysicalAccountService.get_user_accounts(db=db_session, user_id=outsider.id)
+    assert no_accounts == []
+
+    inst = Institution(name=f"Inst-{uuid.uuid4().hex[:8]}")
+    db_session.add(inst)
+    await db_session.flush()
+
+    acc_gbp = PhysicalAccount(
+        name="Service GBP ISA Account",
+        institution_id=inst.id,
+        tax_wrapper=TaxWrapper.ISA,
+        currency=Currency.GBP,
+    )
+    acc_usd = PhysicalAccount(
+        name="Service USD Taxable Account",
+        institution_id=inst.id,
+        tax_wrapper=TaxWrapper.NONE,
+        currency=Currency.USD,
+    )
+    db_session.add_all([acc_gbp, acc_usd])
+    await db_session.flush()
+
+    # User_owner is OWNER on acc_gbp, ALLOCATOR on acc_usd
+    # User_collab is ALLOCATOR on acc_gbp, OWNER on acc_usd
+    db_session.add_all(
+        [
+            PhysicalAccountShare(user_id=user_owner.id, physical_account_id=acc_gbp.id, role=AccountRole.OWNER),
+            PhysicalAccountShare(user_id=user_collab.id, physical_account_id=acc_gbp.id, role=AccountRole.ALLOCATOR),
+            PhysicalAccountShare(user_id=user_owner.id, physical_account_id=acc_usd.id, role=AccountRole.ALLOCATOR),
+            PhysicalAccountShare(user_id=user_collab.id, physical_account_id=acc_usd.id, role=AccountRole.OWNER),
+        ]
+    )
+    await db_session.flush()
+
+    tx = TransactionEvent(description="Service get_user_accounts balance test")
+    db_session.add(tx)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            # GBP entries: user_owner has £1000.00, user_collab has £400.00 -> total £1400.00
+            LedgerEntry(
+                transaction_id=tx.id,
+                physical_account_id=acc_gbp.id,
+                virtual_account_id=uuid.uuid4(),
+                user_id=user_owner.id,
+                currency=Currency.GBP,
+                amount=Decimal("1000.00"),
+            ),
+            LedgerEntry(
+                transaction_id=tx.id,
+                physical_account_id=acc_gbp.id,
+                virtual_account_id=uuid.uuid4(),
+                user_id=user_collab.id,
+                currency=Currency.GBP,
+                amount=Decimal("400.00"),
+            ),
+            # USD entries: user_owner has $250.00, user_collab has $750.00 -> total $1000.00
+            LedgerEntry(
+                transaction_id=tx.id,
+                physical_account_id=acc_usd.id,
+                virtual_account_id=uuid.uuid4(),
+                user_id=user_owner.id,
+                currency=Currency.USD,
+                amount=Decimal("250.00"),
+            ),
+            LedgerEntry(
+                transaction_id=tx.id,
+                physical_account_id=acc_usd.id,
+                virtual_account_id=uuid.uuid4(),
+                user_id=user_collab.id,
+                currency=Currency.USD,
+                amount=Decimal("750.00"),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    # 2. Query all accounts for user_owner
+    owner_results = await PhysicalAccountService.get_user_accounts(db=db_session, user_id=user_owner.id)
+    assert len(owner_results) == 2
+    res_map = {acc.name: acc for acc in owner_results}
+
+    # On GBP account (OWNER), balance is total £1400.00
+    assert res_map["Service GBP ISA Account"].role == AccountRole.OWNER.value
+    assert res_map["Service GBP ISA Account"].balance == Decimal("1400.00")
+
+    # On USD account (ALLOCATOR), balance is strictly user_owner's £250.00 slice
+    assert res_map["Service USD Taxable Account"].role == AccountRole.ALLOCATOR.value
+    assert res_map["Service USD Taxable Account"].balance == Decimal("250.00")
+
+    # 3. Currency filtering
+    gbp_only = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, currency=Currency.GBP
+    )
+    assert len(gbp_only) == 1
+    assert gbp_only[0].id == acc_gbp.id
+
+    usd_only = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, currency=Currency.USD
+    )
+    assert len(usd_only) == 1
+    assert usd_only[0].id == acc_usd.id
+
+    eur_none = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, currency=Currency.EUR
+    )
+    assert len(eur_none) == 0
+
+    # 4. Tax wrapper filtering
+    isa_only = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, tax_wrapper=TaxWrapper.ISA
+    )
+    assert len(isa_only) == 1
+    assert isa_only[0].id == acc_gbp.id
+
+    taxable_only = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, tax_wrapper=TaxWrapper.NONE
+    )
+    assert len(taxable_only) == 1
+    assert taxable_only[0].id == acc_usd.id
+
+    sipp_none = await PhysicalAccountService.get_user_accounts(
+        db=db_session, user_id=user_owner.id, tax_wrapper=TaxWrapper.SIPP
+    )
+    assert len(sipp_none) == 0
