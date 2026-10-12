@@ -29,3 +29,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrades the database schema by removing updated_at column from physical_account_share."""
     op.drop_column("physical_account_share", "updated_at")
+
